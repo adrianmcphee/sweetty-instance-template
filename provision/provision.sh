@@ -128,14 +128,14 @@ if [[ ! -f "${INSTALL_DIR}/sweetty.log" ]]; then
 	install -m 0640 -o "${SWEETTY_USER}" -g "${SWEETTY_USER}" /dev/null "${INSTALL_DIR}/sweetty.log"
 fi
 
-# Pre-create persona.json owned by the honeypot user. INSTALL_DIR itself is not
-# writable by the sweetty user, so without an owned file to write into, the first
-# run cannot persist its generated identity and the service exits non-zero. An
-# empty owned file is enough: persona load is generate-on-first-run and
-# regenerate-if-empty, so the honeypot populates it in place on first start.
-if [[ ! -f "${INSTALL_DIR}/persona.json" ]]; then
-	install -m 0640 -o "${SWEETTY_USER}" -g "${SWEETTY_USER}" /dev/null "${INSTALL_DIR}/persona.json"
-fi
+# Writable state dir for the honeypot's generated identity. INSTALL_DIR is
+# operator-owned and read-only to the sweetty user, but the persona is written by
+# the honeypot (atomically, via a temp file) on first run, so it needs a directory
+# the honeypot owns. config.json points persona_file at state/persona.json. Mode
+# 0700: only the honeypot reads or writes it. This keeps the slot binaries and the
+# operator config unwritable by the deception process while still letting it
+# persist its identity.
+install -d -m 0700 -o "${SWEETTY_USER}" -g "${SWEETTY_USER}" "${INSTALL_DIR}/state"
 
 # Session recordings (asciinema casts, one per connection) land here when
 # record_dir is set in config.json. The honeypot user owns it and nothing else
