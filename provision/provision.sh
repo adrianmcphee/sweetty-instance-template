@@ -156,6 +156,38 @@ install -m 0644 "${SCRIPT_DIR}/systemd/sweetty-green.service" /etc/systemd/syste
 systemctl daemon-reload
 
 # ---------------------------------------------------------------------------
+log "slotdeploy"
+# The blue/green deploy runtime that deploy.sh hands off to. Fetch a pinned,
+# checksum-verified static binary so the honeypot host needs no Go toolchain (one
+# fewer thing on a box we treat as already hostile). Runs while egress is still
+# open, before the firewall step below.
+SLOTDEPLOY_REPO="${SLOTDEPLOY_REPO:-adrianmcphee/slotdeploy}"
+SLOTDEPLOY_VERSION="${SLOTDEPLOY_VERSION:-v0.1.0}"
+if ! command -v slotdeploy >/dev/null 2>&1; then
+	case "$(uname -m)" in
+	x86_64 | amd64) sd_arch="amd64" ;;
+	aarch64 | arm64) sd_arch="arm64" ;;
+	*) echo "unsupported arch for slotdeploy: $(uname -m)" >&2; exit 1 ;;
+	esac
+	sd_asset="slotdeploy_${SLOTDEPLOY_VERSION#v}_linux_${sd_arch}"
+	sd_base="https://github.com/${SLOTDEPLOY_REPO}/releases/download/${SLOTDEPLOY_VERSION}"
+	sd_tmp="$(mktemp -d)"
+	curl -fsSL "${sd_base}/${sd_asset}" -o "${sd_tmp}/slotdeploy"
+	curl -fsSL "${sd_base}/checksums.txt" -o "${sd_tmp}/checksums.txt"
+	sd_want="$(grep -E " (\./)?${sd_asset}\$" "${sd_tmp}/checksums.txt" | awk '{print $1}')"
+	sd_got="$(sha256sum "${sd_tmp}/slotdeploy" | awk '{print $1}')"
+	if [[ -z "${sd_want}" || "${sd_want}" != "${sd_got}" ]]; then
+		echo "slotdeploy checksum mismatch (want ${sd_want:-none}, got ${sd_got}); refusing" >&2
+		exit 1
+	fi
+	install -m 0755 -o root -g root "${sd_tmp}/slotdeploy" /usr/local/bin/slotdeploy
+	rm -rf "${sd_tmp}"
+	echo "installed slotdeploy ${SLOTDEPLOY_VERSION} to /usr/local/bin/slotdeploy"
+else
+	echo "slotdeploy already present: $(command -v slotdeploy)"
+fi
+
+# ---------------------------------------------------------------------------
 log "Deploy sudoers"
 SUDOERS_RENDERED="$(mktemp)"
 sed "s/__DEPLOY_USER__/${DEPLOY_USER}/g" "${SCRIPT_DIR}/sudoers/sweetty-deploy.template" > "${SUDOERS_RENDERED}"
