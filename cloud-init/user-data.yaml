@@ -1,0 +1,93 @@
+#cloud-config
+#
+# SweeTTY honeypot first-boot provisioning.
+#
+# Paste this into your cloud provider's user-data field (or reference it from
+# Terraform, see ../terraform). Edit the values under write_files first: the
+# instance env is the single source of truth and the git URL points at the repo
+# that holds provision.sh.
+#
+# This runs once, as root, before anyone logs in, which is the safe place to
+# move SSH off port 22. By the time the box answers on the admin port, the
+# firewall is already up and the honeypot ports are the only thing open to all.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - git
+  - curl
+  - ca-certificates
+
+write_files:
+  # The instance configuration. Fill these in. Treat OPERATOR_IP as the only
+  # address that should ever reach management; everything else is the trap.
+  - path: /root/sweetty.instance.env
+    permissions: "0600"
+    content: |
+      # Provisioning code pin. cloud-init fetches provision.sh and the whole
+      # firewall/systemd/IDS perimeter from this repo at this exact commit and
+      # verifies it before running it as root, so a poisoned fetch cannot define your
+      # perimeter. PROVISION_REF is a branch or tag NAME (prefer an immutable tag);
+      # PROVISION_SHA is the commit it must resolve to, from
+      # `git rev-parse <ref>^{commit}` (the ^{commit} matters for annotated tags).
+      # With a moving branch the SHA must equal its current tip, so re-provisioning
+      # after the branch advances powers the box off until you bump the SHA. On any
+      # mismatch the box powers itself off instead of provisioning from an unknown tree.
+      PROVISION_REPO="https://github.com/adrianmcphee/sweetty-instance-template.git"
+      PROVISION_REF="main"
+      PROVISION_SHA="REPLACE_WITH_REVIEWED_COMMIT_SHA"
+      SWEETTY_REPO="adrianmcphee/sweetty"
+      RELEASE_TAG="v0.0.0"
+      SWEETTY_USER="sweetty"
+      INSTALL_DIR="/opt/sweetty"
+      DEPLOY_USER="deploy"
+      # REPLACE 203.0.113.10 with the public IP you connect from. Admin SSH is
+      # firewalled to it alone, so a stale value locks you out (rebuild required); an
+      # all-internet wildcard is rejected by the renderer. ADMIN_SSH_PORT is set
+      # explicitly (not randomized) so you know where to reconnect; any free
+      # http-like port that is not a honeypot port works.
+      OPERATOR_IP="203.0.113.10"
+      ADMIN_SSH_PORT="8088"
+      PORTAL_PORT="8443"
+      DNS_RESOLVERS="1.1.1.1,9.9.9.9"
+      LOG_ENDPOINT="logs.example.com:6514"
+      LOG_TRANSPORT="tls"
+      TOPOLOGY="direct"
+
+  # The deploy public key the CI deploy uses. Replace with your own.
+  - path: /root/deploy.pub
+    permissions: "0644"
+    content: |
+      ssh-ed25519 AAAA_REPLACE_WITH_YOUR_DEPLOY_PUBLIC_KEY deploy@ci
+
+runcmd:
+  # Fetch the provisioning code at the pinned commit, verify it, provision, and
+  # install the deploy key, all in ONE shell with `set -e`. cloud-init does NOT stop
+  # between runcmd entries, so everything that must not run against an unverified
+  # tree lives here: the early `exit 1` on a pin mismatch (set -e) guarantees neither
+  # provisioning nor the key install runs, and the mismatch also force-powers-off so
+  # a verification-failed box does not linger. For a private fork, point
+  # PROVISION_REPO at it and deliver a read-only deploy key out of band.
+  - |
+    bash -c '
+    set -euo pipefail
+    . /root/sweetty.instance.env
+    : "${PROVISION_SHA:?set PROVISION_SHA in the instance env to the reviewed commit}"
+    rm -rf /opt/sweetty-instance-template
+    git clone --depth 1 --branch "${PROVISION_REF:-main}" "${PROVISION_REPO}" /opt/sweetty-instance-template
+    got="$(git -C /opt/sweetty-instance-template rev-parse HEAD)"
+    if [ "${got}" != "${PROVISION_SHA}" ]; then
+      echo "provision pin mismatch: got ${got}, want ${PROVISION_SHA}; powering off" >&2
+      poweroff -f
+      exit 1
+    fi
+    INSTANCE_ENV=/root/sweetty.instance.env /opt/sweetty-instance-template/provision/provision.sh
+    # Install the deploy key only now, after verified-good provisioning created the
+    # deploy user. set -e plus the exit 1 above gate this on a clean run.
+    install -d -m 0700 -o deploy -g deploy /home/deploy/.ssh
+    install -m 0600 -o deploy -g deploy /root/deploy.pub /home/deploy/.ssh/authorized_keys
+    rm -f /root/deploy.pub
+    '
+
+final_message: "SweeTTY host provisioned. Deploy a pinned release, then it is live and hostile."
