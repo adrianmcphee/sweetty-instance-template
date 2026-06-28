@@ -1,0 +1,10 @@
+#!/bin/sh
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+VALIDATOR="$SCRIPT_DIR/../.github/scripts/validate-commit-message.sh"
+
+if [ ! -f "$VALIDATOR" ]; then
+	exit 0
+fi
+
+exec /bin/sh "$VALIDATOR" "$1"
