@@ -101,6 +101,7 @@ fi
 # from. The deploy user owns this staging dir (no sudo needed); the next step is
 # a narrowly-granted "sudo install" that copies this fixed source into the slot
 # as root:sweetty, which is the only privileged action in the deploy.
+rm -rf /tmp/sweetty-deploy 2>/dev/null || true
 install -d -m 0755 /tmp/sweetty-deploy
 install -m 0755 "${WORK}/sweetty" /tmp/sweetty-deploy/sweetty
 

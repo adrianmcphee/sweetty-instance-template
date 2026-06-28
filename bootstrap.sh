@@ -46,8 +46,20 @@ else
 	echo "no deploy key at ${DEPLOY_PUBKEY}; ${DEPLOY_USER} will have no key (set DEPLOY_PUBKEY)" >&2
 fi
 
-echo "### bootstrap: deploy ${RELEASE_TAG} ###"
-INSTANCE_ENV="${INSTANCE_ENV}" "${REPO_ROOT}/deploy/deploy.sh" "${RELEASE_TAG}"
+echo "### bootstrap: deploy ${RELEASE_TAG} (as ${DEPLOY_USER}) ###"
+# Place the repo in the deploy user's home and run the FIRST deploy as that user,
+# identical to every later `make deploy`. Running it as root instead would leave
+# root-owned state (the /tmp staging dir) that then blocks a deploy-user re-deploy,
+# and it means ongoing deploys are exercised from the very first one.
+DEPLOY_HOME="$(getent passwd "${DEPLOY_USER}" | cut -d: -f6)"
+DEPLOY_HOME="${DEPLOY_HOME:-/home/${DEPLOY_USER}}"
+DEPLOY_CHECKOUT="${DEPLOY_HOME}/sweetty-instance-template"
+rm -rf "${DEPLOY_CHECKOUT}"
+cp -a "${REPO_ROOT}" "${DEPLOY_CHECKOUT}"
+cp -f "${INSTANCE_ENV}" "${DEPLOY_CHECKOUT}/sweetty.instance.env"
+chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "${DEPLOY_CHECKOUT}"
+runuser -u "${DEPLOY_USER}" -- env INSTANCE_ENV="${DEPLOY_CHECKOUT}/sweetty.instance.env" \
+	"${DEPLOY_CHECKOUT}/deploy/deploy.sh" "${RELEASE_TAG}"
 
 echo "### bootstrap: verify ###"
 active="$(cat "${INSTALL_DIR}/.active-slot" 2>/dev/null || echo blue)"
