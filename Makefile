@@ -30,7 +30,7 @@ check-emdash: ## Fail if an em dash appears in any tracked file
 .PHONY: lint
 lint: ## Shellcheck the scripts when shellcheck is installed
 	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck provision/provision.sh deploy/deploy.sh; \
+		shellcheck bootstrap.sh provision/provision.sh provision/render-nftables.sh deploy/deploy.sh; \
 	else \
 		echo "shellcheck not installed; skipping (CI runs it)"; \
 	fi

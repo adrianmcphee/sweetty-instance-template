@@ -1,0 +1,25 @@
+name: CI
+
+# Validate the perimeter the way the host will: shellcheck the scripts, render and
+# syntax-check the nftables ruleset, and syntax-check the HAProxy edge config. The
+# host's provision.sh fails closed on a bad ruleset, but catching it here means a
+# broken firewall or HAProxy config never reaches a deploy.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck nftables haproxy
+      - name: Em dash, shellcheck, and HAProxy config
+        run: make check-emdash lint haproxy-check
+      - name: nftables ruleset (nft check needs CAP_NET_ADMIN)
+        run: sudo make firewall-check
