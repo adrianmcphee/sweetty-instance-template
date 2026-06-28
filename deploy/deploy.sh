@@ -73,8 +73,8 @@ if command -v gh >/dev/null 2>&1; then
 		--pattern "${ASSET}" --pattern "checksums.txt" --dir "${WORK}"
 else
 	base="https://github.com/${SWEETTY_REPO}/releases/download/${TAG}"
-	curl -fSL "${base}/${ASSET}" -o "${WORK}/${ASSET}"
-	curl -fSL "${base}/checksums.txt" -o "${WORK}/checksums.txt"
+	curl -fsSL "${base}/${ASSET}" -o "${WORK}/${ASSET}"
+	curl -fsSL "${base}/checksums.txt" -o "${WORK}/checksums.txt"
 fi
 
 echo "=== Verifying checksum ==="
