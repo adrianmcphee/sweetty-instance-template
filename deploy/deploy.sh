@@ -78,13 +78,15 @@ else
 fi
 
 echo "=== Verifying checksum ==="
-if ! grep -E "  ${ASSET}\$" "${WORK}/checksums.txt" >/dev/null; then
+# Tolerate either a bare name or a ./-prefixed one in checksums.txt, so the verify
+# works across release builds that differ in that detail.
+if ! grep -E " (\./)?${ASSET}\$" "${WORK}/checksums.txt" >/dev/null; then
 	echo "no checksum entry for ${ASSET} in checksums.txt" >&2
 	exit 1
 fi
 (
 	cd "${WORK}"
-	grep -E "  ${ASSET}\$" checksums.txt | sha256sum -c -
+	grep -E " (\./)?${ASSET}\$" checksums.txt | sha256sum -c -
 )
 echo "checksum OK"
 
@@ -95,9 +97,12 @@ if [[ ! -f "${WORK}/sweetty" ]]; then
 	exit 1
 fi
 
-# Stage at the fixed path the deploy sudoers grant allows.
-sudo install -d -m 0755 /tmp/sweetty-deploy
-sudo install -m 0755 "${WORK}/sweetty" /tmp/sweetty-deploy/sweetty
+# Stage the verified binary at the fixed path the deploy sudoers grant reads
+# from. The deploy user owns this staging dir (no sudo needed); the next step is
+# a narrowly-granted "sudo install" that copies this fixed source into the slot
+# as root:sweetty, which is the only privileged action in the deploy.
+install -d -m 0755 /tmp/sweetty-deploy
+install -m 0755 "${WORK}/sweetty" /tmp/sweetty-deploy/sweetty
 
 # Determine the inactive slot the same way slotdeploy will.
 ACTIVE="$(cat "${INSTALL_DIR}/.active-slot" 2>/dev/null || echo blue)"
