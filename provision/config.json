@@ -5,6 +5,7 @@
   "persona_file": "/opt/sweetty/state/persona.json",
   "geoip_file": "/opt/sweetty/geo/country-ipv4.csv",
   "asn_file": "/opt/sweetty/geo/asn-ipv4.csv",
+  "bruteforce": { "enabled": true, "after_tries": 8, "after_seconds": 120, "probability": 0.25 },
   "listeners": [
     { "port": 21,   "protocol": "ftp" },
     { "port": 22,   "protocol": "ssh" },
