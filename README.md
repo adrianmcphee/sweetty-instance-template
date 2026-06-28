@@ -31,7 +31,14 @@ deployment is versioned and reproducible.
 4. On the host, deploy a pinned release as the `deploy` user: `make deploy
    TAG=vX.Y.Z` (cloud-init installs the deploy key for you; for a hand-provisioned
    host, add it first, see the provisioning flow below).
-5. Reach the portal over the SSH tunnel (as `deploy`) that provisioning prints at
+5. **Reboot once and confirm it comes back.** A honeypot has to survive reboots
+   unattended, so validate it before you rely on it: `sudo reboot`, wait, then
+   check the honeypot ports answer, admin SSH is reachable, and the firewall is
+   loaded. The deny-by-default egress firewall allows the link-local range so
+   cloud-init can still reach the instance metadata service on boot; without that
+   the box hangs on `cloud-init-local`. If a reboot does not come back cleanly,
+   that is a provisioning defect, not a one-off.
+6. Reach the portal over the SSH tunnel (as `deploy`) that provisioning prints at
    the end.
 
 For several honeypots, use one private repo per instance, or one repo with a branch
