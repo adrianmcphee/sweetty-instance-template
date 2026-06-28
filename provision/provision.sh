@@ -318,6 +318,6 @@ Next:
   3. Deploy a pinned release (never 'latest'):
        deploy/deploy.sh ${RELEASE_TAG:-vX.Y.Z}
   4. Reach the portal by forwarding the SSH port to its loopback bind:
-       ssh -L 8443:127.0.0.1:${PORTAL_PORT:-8443} ${DEPLOY_USER}@host -p ${ADMIN_SSH_PORT}
-       then open http://localhost:8443 (no login: SSH key auth is the front door).
+       ssh -L 8888:127.0.0.1:${PORTAL_PORT:-8888} ${DEPLOY_USER}@host -p ${ADMIN_SSH_PORT}
+       then open http://localhost:8888 (no login: SSH key auth is the front door).
 EOF

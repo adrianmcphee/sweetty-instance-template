@@ -162,8 +162,8 @@ with a shell and the only key provisioning installs (root login and password aut
 are disabled), so hold its private key:
 
 ```
-ssh -L 8443:127.0.0.1:<PORTAL_PORT> deploy@host -p <ADMIN_SSH_PORT>
-# then open http://localhost:8443
+ssh -L 8888:127.0.0.1:8888 deploy@host -p <ADMIN_SSH_PORT>
+# then open http://localhost:8888
 ```
 
 ## The HAProxy decision

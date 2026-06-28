@@ -49,7 +49,7 @@ write_files:
       # http-like port that is not a honeypot port works.
       OPERATOR_IP="203.0.113.10"
       ADMIN_SSH_PORT="8088"
-      PORTAL_PORT="8443"
+      PORTAL_PORT="8888"
       DNS_RESOLVERS="1.1.1.1,9.9.9.9"
       LOG_ENDPOINT="logs.example.com:6514"
       LOG_TRANSPORT="tls"

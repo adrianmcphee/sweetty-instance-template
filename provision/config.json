@@ -1,5 +1,5 @@
 {
-  "portal_port": 8443,
+  "portal_port": 8888,
   "log_file": "/opt/sweetty/sweetty.log",
   "record_dir": "/opt/sweetty/recordings",
   "listeners": [
