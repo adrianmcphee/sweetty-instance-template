@@ -1,0 +1,31 @@
+# Narrow sudo grants for the deploy user, rendered by provision.sh to
+# /etc/sudoers.d/sweetty-deploy (__DEPLOY_USER__ is replaced with the real user).
+#
+# The deploy user (used by CI over SSH) can manage the two honeypot slots and
+# install a verified binary into a slot path. It cannot read captured logs, edit
+# config, or run anything else as root. slotdeploy writes the active-slot marker
+# and its own state directly because those are owned by the deploy user, so no
+# sudo is needed for them.
+
+# Slot lifecycle.
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl start sweetty-blue.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl stop sweetty-blue.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl restart sweetty-blue.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl enable sweetty-blue.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl disable sweetty-blue.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl status sweetty-blue.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl start sweetty-green.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl stop sweetty-green.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl restart sweetty-green.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl enable sweetty-green.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl disable sweetty-green.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl status sweetty-green.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
+
+# Install a verified, checksum-matched binary into a slot, then re-grant the
+# low-port capability on it. The source path is fixed so nothing else can be
+# slipped in through this grant.
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/install -o root -g sweetty -m 0750 /tmp/sweetty-deploy/sweetty /opt/sweetty/sweetty-blue
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/install -o root -g sweetty -m 0750 /tmp/sweetty-deploy/sweetty /opt/sweetty/sweetty-green
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/sbin/setcap cap_net_bind_service=+ep /opt/sweetty/sweetty-blue
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/sbin/setcap cap_net_bind_service=+ep /opt/sweetty/sweetty-green
