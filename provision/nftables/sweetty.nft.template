@@ -69,6 +69,17 @@ table inet sweetty {
 		# reach the network, which it has no legitimate reason to do.
 		meta skuid $sweetty_uid log prefix "sweetty-egress-DENY " level warn drop
 
+		# Link-local network (169.254.0.0/16, fe80::/10). Every cloud puts its instance
+		# metadata service here (169.254.169.254 on AWS, GCP, Azure, DigitalOcean,
+		# Vultr, Hetzner, OpenStack, ...), and cloud-init reaches it on every boot:
+		# block it and cloud-init-local hangs, so the box does not come back cleanly
+		# after a reboot. This is cloud-agnostic on purpose: link-local is non-routable
+		# (RFC 3927), so it is never an internet egress path, and the honeypot user is
+		# already denied all egress just above, so the deception process still cannot
+		# read instance metadata through it.
+		ip daddr 169.254.0.0/16 accept
+		ip6 daddr fe80::/10 accept
+
 		# DNS for the rest of the host (not the honeypot user; it was dropped above).
 		# Destination-pinned to the configured resolvers; left uid-broad on purpose so
 		# systemd-resolved's varying caller uid is not broken.
