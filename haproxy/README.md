@@ -59,10 +59,15 @@ front of it as request throttling:
 - **HAProxy** is here for source-IP preservation and slot routing. Its
   stick-table is a flood circuit-breaker, not an access policy.
 
-## Switching to this topology
+## This topology
+
+This is the default (`TOPOLOGY="haproxy"`), and `provision.sh` sets it up for you:
+it installs HAProxy, validates and installs `haproxy.cfg`, starts the edge, and
+enables the `sweetty-hapwatch` unit that logs `FLOOD_BLOCKED` events. The steps it
+performs, for reference:
 
 1. Point sweetty at `config.haproxy.json` (loopback backend ports, loopback
-   portal on 18443); it already sets `"proxy_protocol": true`. The portal binds
+   portal on 8888); it already sets `"proxy_protocol": true`. The portal binds
    loopback and is reached over the SSH tunnel, the same as the direct topology.
 2. Install `haproxy.cfg`, validate it with `haproxy -c -f haproxy.cfg`, and start
    HAProxy.

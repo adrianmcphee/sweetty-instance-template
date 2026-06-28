@@ -173,25 +173,33 @@ ssh -L 8888:127.0.0.1:8888 deploy@host -p <ADMIN_SSH_PORT>
 # then open http://localhost:8888
 ```
 
-## The HAProxy decision
+## The HAProxy edge
 
-By default sweetty binds the public honeypot ports directly and there is no
-proxy. That is simpler, it is what `provision.sh` sets up, and it keeps the
-attacker's real source IP without any extra machinery.
+The default topology (`TOPOLOGY="haproxy"`) puts a transparent HAProxy TCP edge in
+front of the honeypot ports. `provision.sh` installs and starts it. It is
+invisible to attackers (a plain TCP passthrough, no termination) and does three
+jobs: preserves the real attacker source IP, sheds obvious connection floods, and
+exposes its stats console inside the management console. Choose `TOPOLOGY="direct"`
+to skip it and have sweetty bind the public ports itself.
 
-HAProxy is offered as a clearly optional layer for three specific wants:
-real-source-IP preservation when you put anything in front of the honeypot, true
-zero-downtime blue/green, and TLS termination for the portal. Two rules are
-non-negotiable when you use it, and `haproxy/README.md` covers both in full:
+Two rules are non-negotiable, and `haproxy/README.md` covers both in full:
 
 - **PROXY protocol to the backend.** sweetty must keep logging the real attacker
-  IP, so HAProxy sends the PROXY header and sweetty must be run with PROXY-protocol
-  parsing enabled. The two settings are a matched pair.
+  IP, so HAProxy sends the PROXY header and sweetty runs with PROXY-protocol
+  parsing enabled (`config.haproxy.json` sets this). The two settings are a
+  matched pair.
 - **Gentle rate limiting only.** The stick-table limits shed obvious floods and
   nothing more. Heavy upstream rate limiting is wrong for a honeypot: it throws
   away the very intelligence the honeypot exists to collect, because a scanner that
   gets throttled simply leaves. Volumetric protection belongs in nftables and the
   cloud firewall, at the network layer, not as application throttling.
+
+When the edge sheds a flood, the `sweetty hapwatch` helper (a `sweetty-hapwatch`
+systemd unit provisioning installs) reads HAProxy's stick-table over its local
+admin socket and logs a `FLOOD_BLOCKED` event, so the rate-limiting shows up in
+the same live feed as everything else. The HAProxy stats page is bound to loopback
+and reverse-proxied by the portal at `/dashboard/console/haproxy/`, reached over
+the same SSH tunnel with no second login.
 
 ## Deploy flow
 

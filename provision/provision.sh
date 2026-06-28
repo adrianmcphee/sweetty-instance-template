@@ -70,6 +70,11 @@ apt-get install -y \
 	nftables auditd audispd-plugins \
 	libcap2-bin ca-certificates curl jq \
 	rsyslog
+# HAProxy edge (haproxy topology, the default): a transparent TCP front that
+# preserves the real attacker IP via the PROXY protocol and sheds obvious floods.
+if [[ "${TOPOLOGY:-haproxy}" == "haproxy" ]]; then
+	apt-get install -y haproxy
+fi
 # osquery lives in its own apt repo; install it best-effort so provisioning does
 # not fail on a host where the operator chose not to add that repo.
 if ! command -v osqueryd >/dev/null 2>&1; then
@@ -108,7 +113,7 @@ if [[ ! -f "${INSTALL_DIR}/config.json" ]]; then
 	# TOPOLOGY selects the seed: the direct config binds the public ports, the
 	# haproxy config binds loopback backend ports for the HAProxy edge to front.
 	CONFIG_SRC="${SCRIPT_DIR}/config.json"
-	if [[ "${TOPOLOGY:-direct}" == "haproxy" ]]; then
+	if [[ "${TOPOLOGY:-haproxy}" == "haproxy" ]]; then
 		CONFIG_SRC="${REPO_ROOT}/haproxy/config.haproxy.json"
 	fi
 	install -m 0640 -o root -g "${SWEETTY_USER}" "${CONFIG_SRC}" "${INSTALL_DIR}/config.json"
@@ -150,9 +155,34 @@ systemd-tmpfiles --create /etc/tmpfiles.d/sweetty-recordings.conf 2>/dev/null \
 	|| echo "tmpfiles rule for recordings installed (applied on next boot)"
 
 # ---------------------------------------------------------------------------
+log "Geo databases"
+# The portal tags each source with a country and an ISP/ASN from offline
+# databases (the honeypot host has no egress to query a service). Fetch them now,
+# while egress is still open; config.json points geoip_file/asn_file at these
+# paths. A fetch failure is non-fatal: the portal just shows address scope until
+# the databases exist. Override the URLs via GEO_COUNTRY_URL / GEO_ASN_URL.
+install -d -m 0750 -o root -g "${SWEETTY_USER}" "${INSTALL_DIR}/geo"
+GEO_COUNTRY_URL="${GEO_COUNTRY_URL:-https://raw.githubusercontent.com/sapics/ip-location-db/main/geo-whois-asn-country/geo-whois-asn-country-ipv4.csv}"
+GEO_ASN_URL="${GEO_ASN_URL:-https://raw.githubusercontent.com/sapics/ip-location-db/main/asn/asn-ipv4.csv}"
+fetch_geo() {
+	local url="$1" dest="$2" name="$3" tmp
+	tmp="$(mktemp)"
+	if curl -fsSL --retry 3 -o "${tmp}" "${url}" && [[ -s "${tmp}" ]]; then
+		install -m 0640 -o root -g "${SWEETTY_USER}" "${tmp}" "${dest}"
+		echo "fetched ${name} database ($(wc -l <"${dest}") rows) -> ${dest}"
+	else
+		echo "WARNING: could not fetch ${name} database from ${url}; portal shows scope only until it exists" >&2
+	fi
+	rm -f "${tmp}"
+}
+fetch_geo "${GEO_COUNTRY_URL}" "${INSTALL_DIR}/geo/country-ipv4.csv" "country"
+fetch_geo "${GEO_ASN_URL}" "${INSTALL_DIR}/geo/asn-ipv4.csv" "ASN"
+
+# ---------------------------------------------------------------------------
 log "Systemd slot units"
 install -m 0644 "${SCRIPT_DIR}/systemd/sweetty-blue.service" /etc/systemd/system/sweetty-blue.service
 install -m 0644 "${SCRIPT_DIR}/systemd/sweetty-green.service" /etc/systemd/system/sweetty-green.service
+install -m 0644 "${SCRIPT_DIR}/systemd/sweetty-hapwatch.service" /etc/systemd/system/sweetty-hapwatch.service
 systemctl daemon-reload
 
 # ---------------------------------------------------------------------------
@@ -185,6 +215,34 @@ if ! command -v slotdeploy >/dev/null 2>&1; then
 	echo "installed slotdeploy ${SLOTDEPLOY_VERSION} to /usr/local/bin/slotdeploy"
 else
 	echo "slotdeploy already present: $(command -v slotdeploy)"
+fi
+
+# ---------------------------------------------------------------------------
+log "HAProxy edge"
+if [[ "${TOPOLOGY:-haproxy}" == "haproxy" ]]; then
+	install -d -m 0755 /etc/haproxy
+	install -m 0644 "${REPO_ROOT}/haproxy/haproxy.cfg" /etc/haproxy/haproxy.cfg
+	# The runtime admin socket lives in /run/haproxy; the package ships a tmpfiles
+	# rule for it, but create it now so a fresh provision does not race the unit.
+	install -d -m 0750 -o haproxy -g haproxy /run/haproxy 2>/dev/null || true
+	# Fail closed: never front the honeypot with a ruleset HAProxy itself rejects.
+	if ! haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1; then
+		echo "ERROR: haproxy.cfg failed its own syntax check; refusing to start HAProxy" >&2
+		haproxy -c -f /etc/haproxy/haproxy.cfg || true
+		exit 1
+	fi
+	systemctl enable --now haproxy
+	echo "HAProxy edge up: PROXY protocol to the loopback backends, gentle flood limits"
+	# hapwatch turns the edge's stick-table into FLOOD_BLOCKED events. enable --now;
+	# it restarts on failure until a slot binary is deployed, so it self-heals into
+	# a running state without a second provisioning pass.
+	systemctl enable --now sweetty-hapwatch.service || true
+	echo "sweetty-hapwatch enabled: FLOOD_BLOCKED events from the edge"
+else
+	# Direct topology: ensure no edge from a prior haproxy provisioning still fronts
+	# the ports (idempotent re-provision into a different topology).
+	systemctl disable --now haproxy sweetty-hapwatch.service 2>/dev/null || true
+	echo "direct topology: sweetty binds the public ports itself; no HAProxy"
 fi
 
 # ---------------------------------------------------------------------------

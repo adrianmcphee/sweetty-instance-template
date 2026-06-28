@@ -1,0 +1,56 @@
+[Unit]
+Description=SweeTTY HAProxy flood watcher (logs FLOOD_BLOCKED events)
+Documentation=https://github.com/adrianmcphee/sweetty
+# Only meaningful with the HAProxy edge. Ordered after it but not bound to it, so
+# the watcher comes up and idles (retrying the socket) if HAProxy is slow; provision
+# enables it only in the haproxy topology.
+After=network-online.target haproxy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sweetty
+Group=sweetty
+# Reads the stick-table over HAProxy's admin socket, which is mode 660 root:haproxy.
+SupplementaryGroups=haproxy
+WorkingDirectory=/opt/sweetty
+# Run the active slot's binary in hapwatch mode. The marker decides which slot is
+# live; the hapwatch logic is version-stable, so it need not restart on a cutover.
+ExecStart=/usr/bin/env bash -c 'exec "/opt/sweetty/sweetty-$(cat /opt/sweetty/.active-slot 2>/dev/null || echo blue)" hapwatch -config /opt/sweetty/config.json'
+Restart=on-failure
+RestartSec=10
+
+# --- Hardening -------------------------------------------------------------
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/opt/sweetty
+# It speaks only to the local HAProxy admin socket and appends to the local event
+# log: no IP networking at all, stricter than the honeypot's own units.
+RestrictAddressFamilies=AF_UNIX
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @reboot @swap
+TasksMax=16
+MemoryMax=128M
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sweetty-hapwatch
+
+[Install]
+WantedBy=multi-user.target
