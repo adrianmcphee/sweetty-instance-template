@@ -1,0 +1,92 @@
+#!/usr/sbin/nft -f
+#
+# SweeTTY honeypot firewall.
+#
+# This file is the static ruleset. It references nft variables (operator_ip,
+# admin_ssh_port, honeypot_ports, dns_resolvers, log_port,
+# sweetty_uid) that render-nftables.sh emits ahead of it from
+# sweetty.instance.env. Do not edit the rendered output; edit this template or
+# the env file and re-render.
+#
+# Posture:
+#   inbound  : deny by default. Honeypot ports open to the world. Management
+#              (real SSH + portal) reachable ONLY from the operator address.
+#   outbound : deny by default. The honeypot user gets ZERO egress (a honeypot
+#              that calls out is either compromised or being used as an SSRF
+#              relay). A tight allowlist covers the few host functions that
+#              legitimately need the network: DNS, pulling the pinned release,
+#              shipping logs.
+#   forward  : deny. This host routes nothing.
+
+flush ruleset
+
+table inet sweetty {
+
+	chain inbound {
+		type filter hook input priority filter; policy drop;
+
+		# Loopback and replies to connections we started.
+		iif "lo" accept
+		ct state established,related accept
+		ct state invalid drop
+
+		# Rate-limited ICMP so the box still answers a ping without becoming a
+		# reflector. IPv6 neighbour discovery must pass or v6 connectivity dies.
+		ip protocol icmp icmp type echo-request limit rate 5/second accept
+		ip6 nexthdr ipv6-icmp icmpv6 type {
+			echo-request, nd-neighbor-solicit, nd-neighbor-advert,
+			nd-router-solicit, nd-router-advert
+		} accept
+
+		# The attack surface. This is the product. Open to everyone.
+		tcp dport $honeypot_ports accept
+
+		# Management plane. Real SSH lives on a randomized, http-like port and is
+		# reachable only from the operator address. The portal is NOT exposed: it
+		# binds loopback and is reached by forwarding this SSH port to it
+		# (ssh -L <local>:127.0.0.1:<portal_port> operator@host -p <admin_ssh_port>).
+		ip saddr $operator_ip tcp dport $admin_ssh_port accept
+		ip6 saddr $operator_ip6 tcp dport $admin_ssh_port accept
+
+		# Anything else that reached input is unsolicited and not honeypot
+		# traffic. Drop quietly; the honeypot itself is the place we collect intel.
+		drop
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+	}
+
+	chain outbound {
+		type filter hook output priority filter; policy drop;
+
+		iif "lo" accept
+		oif "lo" accept
+		ct state established,related accept
+
+		# The honeypot user must never originate a connection. If this ever
+		# fires, treat it as an incident: it means the deception process tried to
+		# reach the network, which it has no legitimate reason to do.
+		meta skuid $sweetty_uid log prefix "sweetty-egress-DENY " level warn drop
+
+		# DNS for the rest of the host (not the honeypot user; it was dropped above).
+		# Destination-pinned to the configured resolvers; left uid-broad on purpose so
+		# systemd-resolved's varying caller uid is not broken.
+		meta l4proto { tcp, udp } th dport 53 ip daddr $dns_resolvers accept
+
+		# Pull the pinned release for a deploy. GitHub publishes from a wide, changing
+		# address range, so this allows 443 by destination, but scopes it to the uids
+		# that legitimately pull (root for apt/system, the deploy user) so the honeypot
+		# user cannot ride it even if its own drop above is ever bypassed.
+		meta skuid $egress_443_uids tcp dport 443 accept
+
+		# Ship sweetty.log off-host to the collector, scoped to the log shipper's uid
+		# (rsyslog runs as syslog on Debian/Ubuntu, root elsewhere).
+		meta skuid $egress_log_uids tcp dport $log_port accept
+
+		# Everything else outbound is denied and logged, so a surprise egress
+		# attempt from any host process is visible.
+		log prefix "host-egress-DENY " level warn
+		drop
+	}
+}
