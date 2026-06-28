@@ -22,6 +22,11 @@ __DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl disable sweetty-green.se
 __DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl status sweetty-green.service
 __DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
 
+# Reboot the host. Operational (the deploy user is the only login), and it lets a
+# deploy validate that the box survives a reboot unattended: services auto-start,
+# the firewall reloads, and the honeypot comes back. A reboot grants no privilege.
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl reboot
+
 # Install a verified, checksum-matched binary into a slot, then re-grant the
 # low-port capability on it. The source path is fixed so nothing else can be
 # slipped in through this grant.
