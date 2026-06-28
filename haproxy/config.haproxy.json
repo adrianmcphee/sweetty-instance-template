@@ -1,0 +1,18 @@
+{
+  "_comment": "sweetty config for the OPTIONAL HAProxy topology. Listeners bind loopback backend ports (public + 10000, 2323 -> 12323) instead of the public ports; HAProxy fronts only the honeypot ports and reaches each backend with the PROXY protocol, so proxy_protocol below makes sweetty parse that header and recover the real attacker IP (a matched pair with send-proxy in haproxy.cfg). The portal is NOT fronted by HAProxy: it binds loopback (the default) and is reached over the management SSH tunnel, so there is no portal login. The portal proxies the loopback HAProxy stats console at /dashboard/console/haproxy/ over that same tunnel.",
+  "portal_port": 18443,
+  "log_file": "/opt/sweetty/sweetty.log",
+  "proxy_protocol": true,
+  "admin_consoles": [
+    { "name": "haproxy", "label": "HAProxy", "target": "http://127.0.0.1:19000/" }
+  ],
+  "listeners": [
+    { "port": 10021, "protocol": "ftp" },
+    { "port": 10022, "protocol": "ssh" },
+    { "port": 10023, "protocol": "telnet", "persona": "busybox" },
+    { "port": 10080, "protocol": "http",   "persona": "wordpress" },
+    { "port": 10443, "protocol": "https" },
+    { "port": 12323, "protocol": "telnet", "persona": "ubuntu" },
+    { "port": 18080, "protocol": "http",   "persona": "tomcat" }
+  ]
+}
