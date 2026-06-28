@@ -88,6 +88,11 @@ runcmd:
     install -d -m 0700 -o deploy -g deploy /home/deploy/.ssh
     install -m 0600 -o deploy -g deploy /root/deploy.pub /home/deploy/.ssh/authorized_keys
     rm -f /root/deploy.pub
+    # First deploy: bring the pinned release up now, over the same verified deploy
+    # path used for every later update (provision installed slotdeploy). The box
+    # therefore boots straight into a running, hardened sensor with no manual step.
+    # RELEASE_TAG is explicit and pinned, never latest.
+    INSTANCE_ENV=/root/sweetty.instance.env /opt/sweetty-instance-template/deploy/deploy.sh "${RELEASE_TAG}"
     '
 
-final_message: "SweeTTY host provisioned. Deploy a pinned release, then it is live and hostile."
+final_message: "SweeTTY host provisioned and the pinned release deployed. The sensor is live and hostile."
