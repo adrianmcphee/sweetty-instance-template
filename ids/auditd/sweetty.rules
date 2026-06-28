@@ -1,0 +1,56 @@
+## SweeTTY honeypot auditd tripwires.
+##
+## Installed to /etc/audit/rules.d/sweetty.rules by provision.sh, which replaces
+## __SWEETTY_UID__ with the real uid of the sweetty user, then runs augenrules.
+##
+## These are deliberately near-zero-false-positive alarms. The honeypot never
+## executes attacker input and never calls out, so the events below should NEVER
+## happen on a healthy host. If one fires, treat it as an incident, not noise.
+
+## Reset and size the audit backlog.
+-D
+-b 8192
+--backlog_wait_time 60000
+## Panic mode 1 = printk on failure. Use 2 (immutable) once the rules are stable.
+-f 1
+
+## --- Tripwire 1: the honeypot user spawns a child --------------------------
+## The only legitimate execve under the sweetty uid is systemd starting the slot
+## binary. Any further execve means the deception process spawned something,
+## which it has no code path to do. Watch both ABIs.
+-a always,exit -F arch=b64 -S execve -F uid=__SWEETTY_UID__ -k sweetty_exec
+-a always,exit -F arch=b32 -S execve -F uid=__SWEETTY_UID__ -k sweetty_exec
+
+## --- Tripwire 2: the honeypot user opens an outbound connection ------------
+## sweetty only listens (bind/accept). It never dials out and never resolves an
+## attacker-supplied host. A connect() under its uid is an outbound attempt.
+-a always,exit -F arch=b64 -S connect -F uid=__SWEETTY_UID__ -k sweetty_connect
+-a always,exit -F arch=b32 -S connect -F uid=__SWEETTY_UID__ -k sweetty_connect
+
+## --- Tripwire 3: anything writes where it must not -------------------------
+## The slot binaries and config are root-owned and the service runs read-only
+## except for its log dir, so a write here means tampering.
+-w /opt/sweetty/sweetty-blue -p wa -k sweetty_tamper
+-w /opt/sweetty/sweetty-green -p wa -k sweetty_tamper
+-w /opt/sweetty/config.json -p wa -k sweetty_tamper
+
+## Classic persistence and privilege locations. None of these should change on a
+## box whose only job is to be attacked.
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/sudoers -p wa -k priv
+-w /etc/sudoers.d/ -p wa -k priv
+-w /etc/cron.d/ -p wa -k persistence
+-w /etc/crontab -p wa -k persistence
+-w /etc/systemd/system/ -p wa -k persistence
+-w /etc/ld.so.preload -p wa -k persistence
+-w /root/.ssh/ -p wa -k persistence
+-w /home/deploy/.ssh/ -p wa -k persistence
+
+## Module loading. A honeypot host loads no modules at runtime.
+-a always,exit -F arch=b64 -S init_module -S finit_module -S delete_module -k modules
+
+## Lock the audit configuration so it cannot be silently disabled. Enable once
+## the rules above are stable; it takes effect until the next reboot.
+## -e 2
