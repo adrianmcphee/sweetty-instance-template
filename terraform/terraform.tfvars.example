@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+# The DO token is best passed as TF_VAR_do_token in the environment, not here.
+
+# do_token             = "dop_v1_..."   # prefer: export TF_VAR_do_token=...
+hostname             = "sweetty-sensor"
+region               = "ams3"
+droplet_size         = "s-1vcpu-1gb"
+ssh_key_fingerprints = ["aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"]
+
+# The ONLY source allowed to reach management. Lock this down hard.
+operator_cidr  = "203.0.113.10/32"
+admin_ssh_port = "61022"
+log_port       = "6514"
