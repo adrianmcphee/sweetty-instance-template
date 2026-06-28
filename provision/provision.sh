@@ -62,6 +62,10 @@ log() { printf '\n=== %s ===\n' "$1"; }
 log "Packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
+# Apply pending updates now, while egress is still open. Once the firewall loads,
+# the host can reach only DNS, the release host on 443, and the log collector, so
+# apt mirror traffic (often http on 80) would be blocked and patching would fail.
+apt-get upgrade -y
 apt-get install -y \
 	nftables auditd audispd-plugins \
 	libcap2-bin ca-certificates curl jq \
@@ -90,7 +94,11 @@ install -d -m 0700 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" "/home/${DEPLOY_USER}
 
 # ---------------------------------------------------------------------------
 log "Layout: ${INSTALL_DIR}"
-install -d -m 0750 -o root -g "${SWEETTY_USER}" "${INSTALL_DIR}"
+# 0751, not 0750: the deploy user is not in the sweetty group, but slotdeploy
+# (running as deploy) must traverse INSTALL_DIR to reach its state dir and the
+# active-slot marker below. o+x grants traverse only; deploy still cannot list the
+# dir or read the log (sweetty.log is 0640 sweetty:sweetty).
+install -d -m 0751 -o root -g "${SWEETTY_USER}" "${INSTALL_DIR}"
 install -d -m 0750 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" "${INSTALL_DIR}/deploy"
 install -d -m 0700 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" "${INSTALL_DIR}/deploy/slots"
 
@@ -118,6 +126,15 @@ fi
 # before the first run.
 if [[ ! -f "${INSTALL_DIR}/sweetty.log" ]]; then
 	install -m 0640 -o "${SWEETTY_USER}" -g "${SWEETTY_USER}" /dev/null "${INSTALL_DIR}/sweetty.log"
+fi
+
+# Pre-create persona.json owned by the honeypot user. INSTALL_DIR itself is not
+# writable by the sweetty user, so without an owned file to write into, the first
+# run cannot persist its generated identity and the service exits non-zero. An
+# empty owned file is enough: persona load is generate-on-first-run and
+# regenerate-if-empty, so the honeypot populates it in place on first start.
+if [[ ! -f "${INSTALL_DIR}/persona.json" ]]; then
+	install -m 0640 -o "${SWEETTY_USER}" -g "${SWEETTY_USER}" /dev/null "${INSTALL_DIR}/persona.json"
 fi
 
 # Session recordings (asciinema casts, one per connection) land here when
@@ -157,9 +174,15 @@ log "SSH on port ${ADMIN_SSH_PORT}"
 # Real SSH must leave port 22 so the honeypot can bind it. The firewall already
 # restricts the admin port to the operator address.
 install -d -m 0755 /etc/ssh/sshd_config.d
-cat > /etc/ssh/sshd_config.d/99-sweetty.conf <<EOF
+# Named 00- so it sorts BEFORE distro drop-ins such as 50-cloud-init.conf. sshd
+# uses the FIRST value seen for each keyword, and cloud-init images commonly ship
+# PasswordAuthentication yes, which would otherwise win and leave password auth on.
+# Remove any 99-named copy from an earlier provision so only this one is read.
+rm -f /etc/ssh/sshd_config.d/99-sweetty.conf
+cat > /etc/ssh/sshd_config.d/00-sweetty.conf <<EOF
 # Managed by SweeTTY provision.sh. Real SSH lives here so port 22 is free for
-# the honeypot. Reachable only from the operator address (see nftables).
+# the honeypot. Reachable only from the operator address (see nftables). Key auth
+# only: this overrides any distro default that would enable password auth.
 Port ${ADMIN_SSH_PORT}
 PermitRootLogin no
 PasswordAuthentication no
