@@ -1,0 +1,38 @@
+app: sweetty
+repo_root: /opt/sweetty
+state_dir: /opt/sweetty/deploy
+env_file: /opt/sweetty/deploy/slotdeploy.env
+active_marker: /opt/sweetty/.active-slot
+
+# Command runtime: each slot is a systemd unit (sweetty-blue / sweetty-green)
+# running a pinned binary. The honeypot binds fixed low ports (21..8080) and a
+# port can be held by only one process, so the two slots cannot run at once in
+# this default direct topology. The cutover therefore stops the old slot and
+# starts the new one, which costs a sub-second gap. For a sensor that is fine:
+# missing a few connections during a deploy is acceptable; running two attack
+# surfaces at once, or briefly exposing a half-bound instance, is not. For true
+# zero-downtime blue/green, switch to the HAProxy topology (see haproxy/README.md).
+runtime:
+  type: commands
+  start:
+    - "sudo systemctl stop sweetty-{active}.service 2>/dev/null || true"
+    - "sudo systemctl start sweetty-{slot}.service"
+  stop:
+    - "sudo systemctl disable sweetty-{active}.service 2>/dev/null || true"
+  failure:
+    - "sudo systemctl stop sweetty-{target}.service 2>/dev/null || true"
+    - "sudo systemctl start sweetty-{active}.service"
+  post_switch:
+    - "sudo systemctl enable sweetty-{target}.service 2>/dev/null || true"
+
+# Readiness: the new slot is healthy once it answers on the HTTP honeypot port.
+# Only the freshly started slot is bound at this point, so a 200 here means the
+# new binary came up and bound its listeners.
+health:
+  mode: http
+  urls:
+    - "http://127.0.0.1:80/"
+  expected_status: 200
+  timeout: 60s
+  rollback_timeout: 30s
+  interval: 2s
