@@ -1,0 +1,14 @@
+{
+  "portal_port": 8443,
+  "log_file": "/opt/sweetty/sweetty.log",
+  "record_dir": "/opt/sweetty/recordings",
+  "listeners": [
+    { "port": 21,   "protocol": "ftp" },
+    { "port": 22,   "protocol": "ssh" },
+    { "port": 23,   "protocol": "telnet", "persona": "busybox" },
+    { "port": 80,   "protocol": "http",   "persona": "wordpress" },
+    { "port": 443,  "protocol": "https" },
+    { "port": 2323, "protocol": "telnet", "persona": "ubuntu" },
+    { "port": 8080, "protocol": "http",   "persona": "tomcat" }
+  ]
+}
