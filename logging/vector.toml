@@ -1,0 +1,41 @@
+# Off-host log shipping with Vector (the JSON-native alternative to rsyslog).
+#
+# Vector understands sweetty.log natively: every line is one JSON event, so it
+# parses cleanly and you keep the structure all the way to the collector. Use
+# this instead of the rsyslog config if your collector speaks Vector, syslog, or
+# a socket sink. Replace the placeholders, then run Vector as a service that the
+# nftables egress allowlist permits (the log port only).
+
+data_dir = "/var/lib/vector"
+
+# Tail the append-only honeypot log. checkpointing means a restart resumes where
+# it left off rather than re-shipping the whole file.
+[sources.sweetty_log]
+type = "file"
+include = ["/opt/sweetty/sweetty.log"]
+read_from = "beginning"
+
+# Each line is a JSON object; parse it and tag where it came from.
+[transforms.sweetty_parse]
+type = "remap"
+inputs = ["sweetty_log"]
+source = '''
+. = parse_json!(.message)
+.sensor = get_hostname!()
+.source = "sweetty"
+'''
+
+# Forward over TLS to the collector. Swap the sink type for your destination
+# (socket, syslog, vector, elasticsearch, http, ...). The address host:port must
+# match LOG_ENDPOINT in the instance env so the firewall allows it.
+[sinks.collector]
+type = "socket"
+inputs = ["sweetty_parse"]
+address = "logs.example.com:6514"
+mode = "tcp"
+encoding.codec = "json"
+
+[sinks.collector.tls]
+enabled = true
+verify_certificate = true
+# ca_file = "/etc/ssl/certs/your-collector-ca.pem"
