@@ -90,3 +90,11 @@ if [[ "${rc}" -ne 0 ]]; then
 	exit 1
 fi
 echo "### bootstrap: complete; honeypot live on slot ${active} ###"
+# End on the exact admin port and copy-paste commands provision.sh resolved, so
+# whoever ran this knows precisely how to reconnect and open the console.
+echo
+if [[ -r /root/sweetty-access.txt ]]; then
+	cat /root/sweetty-access.txt
+else
+	echo "admin SSH port: ${ADMIN_SSH_PORT:-see /root/sweetty.instance.env}"
+fi

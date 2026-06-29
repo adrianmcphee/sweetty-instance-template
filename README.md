@@ -8,41 +8,113 @@ The two are kept separate on purpose, so the honeypot and the way it is operated
 can evolve independently. Nothing in here belongs in the product, and nothing in
 the product hard-codes how it gets deployed.
 
-## Deploy your own honeypot
+## Set up a box from scratch
 
-This is a GitHub template repository. Each honeypot you run is its own copy, so the
-deployment is versioned and reproducible.
+This is a GitHub template repository: click **Use this template**, make a
+**private** copy (it will hold your operator address and instance config), and
+work from that. Automating this with an agent? The exact, deterministic procedure
+is in [`AGENTS.md`](./AGENTS.md); the human walkthrough is below.
 
-1. Click **Use this template** and create a **private** repository. Keep it
-   private: it will carry your operator address, your log collector, and your
-   instance config.
-2. Clone your repo, copy `sweetty.instance.env.example` to `sweetty.instance.env`,
-   and fill in the operator address, the release tag to run, and the log
-   collector. `.gitignore` keeps the real env out of git by default, so the public
-   template cannot leak secrets. In your private repo you may force-add it so the
-   honeypot is reproducible from its repo, or keep it local and pass it at provision
-   time.
-3. On a fresh Ubuntu host (cloud-init can call this for you), provision it:
+### Before you start, you need three things
+
+- A **fresh Ubuntu host** (24.04 or 26.04 LTS, **x86_64**) on its own segment,
+  that exists only to be attacked. Nothing real should live near it.
+- The **public IP you connect from** (your laptop's egress address, e.g. what
+  `curl ifconfig.me` shows). This becomes `OPERATOR_IP`, the only address allowed
+  to reach management. It is the address you connect **from**, never the server's
+  own IP. A wrong value locks you out and the box has to be rebuilt.
+- A **deploy SSH keypair**. You keep the private key; its public key goes on the
+  box for the `deploy` user, which is the only login that exists after
+  provisioning.
+
+Then pick one path. Both end at the same hardened, running honeypot.
+
+### Path A: cloud-init (hands-off, best for a brand-new VM)
+
+The box provisions and deploys itself on first boot. You paste one file when you
+create the VM and never SSH in to set it up.
+
+1. Copy `sweetty.instance.env.example` to `sweetty.instance.env` and fill in
+   `OPERATOR_IP` and `RELEASE_TAG` (a published
+   [sweetty release](https://github.com/adrianmcphee/sweetty/releases), e.g.
+   `v0.1.6`). Leave `TOPOLOGY="haproxy"`, and leave `ADMIN_SSH_PORT` **empty** so
+   real SSH lands on a per-instance random port (no fleet-wide tell). The chosen
+   port and the exact login + tunnel commands are written to
+   `/root/sweetty-access.txt`, which you read from the provider's serial console.
+2. Edit `cloud-init/user-data.yaml`: copy those env values into its
+   `sweetty.instance.env` block, paste your deploy **public** key into the
+   `deploy.pub` block, and set `PROVISION_SHA` to the template commit you reviewed
+   (`git rev-parse HEAD`).
+3. Create the VM and paste that `user-data.yaml` into the provider's **Cloud-Init /
+   User-Data** field. **That field is easy to leave blank, and if you do, nothing
+   provisions**: the box comes up as plain Ubuntu. Wait ~3-5 minutes.
+4. **Reboot and verify** (below).
+
+### Path B: over SSH (for a host you already have root on)
+
+One script over root SSH does everything. This is what `AGENTS.md` automates.
+
+1. Fill `sweetty.instance.env` as in Path A step 1 (no `PROVISION_SHA` needed).
+2. Copy the repo, your env, and your deploy **public** key onto the host:
 
    ```bash
-   sudo INSTANCE_ENV="$PWD/sweetty.instance.env" provision/provision.sh
+   rsync -a --exclude='.git' ./ root@HOST:/root/sweetty-instance-template/
+   scp sweetty.instance.env root@HOST:/root/sweetty-instance-template/
+   scp deploy.pub          root@HOST:/root/deploy.pub
    ```
 
-4. On the host, deploy a pinned release as the `deploy` user: `make deploy
-   TAG=vX.Y.Z` (cloud-init installs the deploy key for you; for a hand-provisioned
-   host, add it first, see the provisioning flow below).
-5. **Reboot once and confirm it comes back.** A honeypot has to survive reboots
-   unattended, so validate it before you rely on it: `sudo reboot`, wait, then
-   check the honeypot ports answer, admin SSH is reachable, and the firewall is
-   loaded. The deny-by-default egress firewall allows the link-local range so
-   cloud-init can still reach the instance metadata service on boot; without that
-   the box hangs on `cloud-init-local`. If a reboot does not come back cleanly,
-   that is a provisioning defect, not a one-off.
-6. Reach the portal over the SSH tunnel (as `deploy`) that provisioning prints at
-   the end.
+3. Run the bootstrap as root. It provisions, installs the deploy key, deploys the
+   pinned release, and verifies the honeypot is actually serving before it returns:
 
-For several honeypots, use one private repo per instance, or one repo with a branch
-or directory per instance.
+   ```bash
+   ssh root@HOST 'cd /root/sweetty-instance-template && \
+     INSTANCE_ENV=$PWD/sweetty.instance.env DEPLOY_PUBKEY=/root/deploy.pub ./bootstrap.sh'
+   ```
+
+   Provisioning moves SSH off port 22 and disables root login partway through; your
+   running root session survives. `bootstrap.sh` ends by printing the randomized
+   admin port and the exact login + tunnel commands (also saved to
+   `/root/sweetty-access.txt`); from now on you log in as `deploy` (below).
+4. **Reboot and verify** (below).
+
+### Reboot and verify (do this every time)
+
+A honeypot must survive reboots unattended, and a reboot is the cheapest proof
+provisioning is sound:
+
+```bash
+ssh -p ADMIN_SSH_PORT deploy@HOST 'sudo systemctl reboot'
+sleep 60
+ssh -p ADMIN_SSH_PORT deploy@HOST \
+  'systemctl is-active sweetty-green.service nftables; ss -tln | grep -cE ":(21|22|23|80|443|2323|8080) "'
+```
+
+Expect the honeypot slot active, `nftables` active, and the honeypot ports bound.
+If a reboot does not come back cleanly, that is a provisioning defect, not a
+one-off (the egress firewall must allow the link-local range so cloud-init can
+reach the instance metadata service on boot).
+
+### Reach it afterward
+
+- **Admin shell:** `ssh -p ADMIN_SSH_PORT deploy@HOST`, where `ADMIN_SSH_PORT` is
+  the randomized port from `/root/sweetty-access.txt` (or the bootstrap output).
+  Root login and password auth are off by design; the only door is the `deploy`
+  user with your key, firewalled to `OPERATOR_IP`. Port 22 is the honeypot, not
+  real SSH.
+- **The management console** binds loopback `8888` and is never exposed. Forward it
+  over the admin SSH, and use `-fN` so it is a tunnel, not a login shell:
+
+  ```bash
+  ssh -fN -L 8888:127.0.0.1:8888 deploy@HOST -p ADMIN_SSH_PORT
+  # then open http://localhost:8888   (stop it later: pkill -f '8888:127.0.0.1:8888')
+  ```
+
+- **Update later:** `ssh -p ADMIN_SSH_PORT deploy@HOST`, then
+  `cd sweetty-instance-template && make deploy TAG=vX.Y.Z` (pinned, verified,
+  blue/green).
+
+For several honeypots, use one private repo per instance, or one repo with a
+branch or directory per instance.
 
 ## What you get
 

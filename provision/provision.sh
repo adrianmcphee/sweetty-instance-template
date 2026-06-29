@@ -49,8 +49,12 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/sweetty}"
 # the same port. The portal is NOT exposed: it binds loopback and is reached only
 # by forwarding this SSH port to it.
 if [[ -z "${ADMIN_SSH_PORT:-}" ]]; then
-	# http-like ports that do not collide with the honeypot listeners (80/8080).
-	admin_port_pool=(8000 8008 8088 8090 8181 8800 8888 9000 9080 9090)
+	# Plausible web/app ports, widened for real per-instance variation so the fleet
+	# has no shared admin-port tell, yet each still looks like an ordinary service.
+	# Curated to avoid every port already in use on the box: the honeypot listeners
+	# (21 22 23 80 443 2323 8080), the loopback HAProxy backends (100xx 12323 18080
+	# 19000), and the portal (8888, which the tunnel forwards to).
+	admin_port_pool=(8000 8001 8008 8081 8082 8083 8085 8090 8091 8181 8200 8443 8800 8880 9000 9001 9080 9090 9100 9443)
 	ADMIN_SSH_PORT="${admin_port_pool[RANDOM % ${#admin_port_pool[@]}]}"
 	printf '\n# Randomized by provision.sh on first run.\nADMIN_SSH_PORT="%s"\n' "${ADMIN_SSH_PORT}" >> "${INSTANCE_ENV}"
 	echo "generated a random management SSH port: ${ADMIN_SSH_PORT} (recorded in ${INSTANCE_ENV})"
@@ -363,19 +367,53 @@ chattr +a "${INSTALL_DIR}/sweetty.log" 2>/dev/null \
 log "Restart sshd"
 systemctl restart ssh || systemctl restart sshd || true
 
+# ---------------------------------------------------------------------------
+# Admin access summary. Real SSH is on a per-instance randomized port reachable
+# only from the operator address, so the one thing an operator must never lose is
+# "which port, and the exact command to tunnel the portal". Resolve the real
+# values now (host IP, port, user) into copy-paste commands, write them where the
+# provider serial console can read them as root (an unattended install never sees
+# this script's stdout), and print them last so an interactive run ends on them.
+host_addr="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
+[[ -z "${host_addr}" ]] && host_addr="$(hostname -I 2>/dev/null | awk '{print $1}')"
+[[ -z "${host_addr}" ]] && host_addr="<this-host-public-ip>"
+portal_port="${PORTAL_PORT:-8888}"
+access_file="/root/sweetty-access.txt"
+cat > "${access_file}" <<EOF
+SweeTTY admin access for this host
+==================================
+Real SSH is NOT on port 22 (port 22 is the honeypot). It listens on a
+per-instance randomized port, reachable only from your operator address
+(${OPERATOR_IP:-<operator-ip>}). Root login and password auth are disabled; the
+only login is the ${DEPLOY_USER} user with its key.
+
+  Admin port : ${ADMIN_SSH_PORT}
+
+  Log in:
+    ssh -p ${ADMIN_SSH_PORT} ${DEPLOY_USER}@${host_addr}
+
+  Open the management console (forward the loopback portal, then browse to it):
+    ssh -fN -L ${portal_port}:127.0.0.1:${portal_port} ${DEPLOY_USER}@${host_addr} -p ${ADMIN_SSH_PORT}
+    open http://localhost:${portal_port}
+    (close the tunnel later: pkill -f '${portal_port}:127.0.0.1:${portal_port}')
+
+If ${host_addr} is a private/NAT address, substitute this host's public IP.
+EOF
+chmod 600 "${access_file}"
+
+printf '\n=== Provisioning complete ===\n\n'
+cat "${access_file}"
+printf '\nSaved to %s (readable from the provider serial console).\n' "${access_file}"
+# A by-hand provision (no cloud-init, no bootstrap.sh) still needs the deploy key
+# and a first release; cloud-init and bootstrap.sh both do these for you.
 cat <<EOF
 
-=== Provisioning complete ===
-
-Next:
-  1. Reconnect on the admin SSH port if you moved it: ssh -p ${ADMIN_SSH_PORT} ...
-  2. Add the deploy public key:
+If you provisioned by hand, finish with:
+  1. Add the deploy public key:
+       install -d -m 700 -o ${DEPLOY_USER} -g ${DEPLOY_USER} /home/${DEPLOY_USER}/.ssh
        echo '<deploy pubkey>' >> /home/${DEPLOY_USER}/.ssh/authorized_keys
-       chmod 600 /home/${DEPLOY_USER}/.ssh/authorized_keys
        chown ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER}/.ssh/authorized_keys
-  3. Deploy a pinned release (never 'latest'):
+       chmod 600 /home/${DEPLOY_USER}/.ssh/authorized_keys
+  2. Deploy a pinned release (never 'latest'):
        deploy/deploy.sh ${RELEASE_TAG:-vX.Y.Z}
-  4. Reach the portal by forwarding the SSH port to its loopback bind:
-       ssh -L 8888:127.0.0.1:${PORTAL_PORT:-8888} ${DEPLOY_USER}@host -p ${ADMIN_SSH_PORT}
-       then open http://localhost:8888 (no login: SSH key auth is the front door).
 EOF

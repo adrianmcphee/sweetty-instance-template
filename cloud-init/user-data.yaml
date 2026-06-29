@@ -44,11 +44,13 @@ write_files:
       DEPLOY_USER="deploy"
       # REPLACE 203.0.113.10 with the public IP you connect from. Admin SSH is
       # firewalled to it alone, so a stale value locks you out (rebuild required); an
-      # all-internet wildcard is rejected by the renderer. ADMIN_SSH_PORT is set
-      # explicitly (not randomized) so you know where to reconnect; any free
-      # http-like port that is not a honeypot port works.
+      # all-internet wildcard is rejected by the renderer. ADMIN_SSH_PORT is left
+      # empty so each instance randomizes its real-SSH port (no fleet-wide tell);
+      # provisioning writes the chosen port and the exact login + tunnel commands to
+      # /root/sweetty-access.txt, which you read from the provider's serial console.
+      # Pin a value here instead only if you would rather fix the port before boot.
       OPERATOR_IP="203.0.113.10"
-      ADMIN_SSH_PORT="8088"
+      ADMIN_SSH_PORT=""
       PORTAL_PORT="8888"
       DNS_RESOLVERS="1.1.1.1,9.9.9.9"
       LOG_ENDPOINT="logs.example.com:6514"
@@ -95,4 +97,4 @@ runcmd:
     INSTANCE_ENV=/root/sweetty.instance.env /opt/sweetty-instance-template/deploy/deploy.sh "${RELEASE_TAG}"
     '
 
-final_message: "SweeTTY host provisioned and the pinned release deployed. The sensor is live and hostile."
+final_message: "SweeTTY host provisioned and the pinned release deployed. The sensor is live and hostile. Real SSH is on a randomized port: read /root/sweetty-access.txt from the provider serial console for the exact port and tunnel command."
