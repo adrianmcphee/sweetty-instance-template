@@ -165,9 +165,13 @@ log "Geo databases"
 # while egress is still open; config.json points geoip_file/asn_file at these
 # paths. A fetch failure is non-fatal: the portal just shows address scope until
 # the databases exist. Override the URLs via GEO_COUNTRY_URL / GEO_ASN_URL.
+#
+# sapics/ip-location-db publishes the CSVs to npm and serves them on jsDelivr's
+# CDN; the old raw.githubusercontent.com/.../main paths 404 (the repo restructured),
+# so pull from the CDN. Same filenames and format the geo parser already expects.
 install -d -m 0750 -o root -g "${SWEETTY_USER}" "${INSTALL_DIR}/geo"
-GEO_COUNTRY_URL="${GEO_COUNTRY_URL:-https://raw.githubusercontent.com/sapics/ip-location-db/main/geo-whois-asn-country/geo-whois-asn-country-ipv4.csv}"
-GEO_ASN_URL="${GEO_ASN_URL:-https://raw.githubusercontent.com/sapics/ip-location-db/main/asn/asn-ipv4.csv}"
+GEO_COUNTRY_URL="${GEO_COUNTRY_URL:-https://cdn.jsdelivr.net/npm/@ip-location-db/geo-whois-asn-country/geo-whois-asn-country-ipv4.csv}"
+GEO_ASN_URL="${GEO_ASN_URL:-https://cdn.jsdelivr.net/npm/@ip-location-db/asn/asn-ipv4.csv}"
 fetch_geo() {
 	local url="$1" dest="$2" name="$3" tmp
 	tmp="$(mktemp)"
@@ -235,13 +239,14 @@ if [[ "${TOPOLOGY:-haproxy}" == "haproxy" ]]; then
 		haproxy -c -f /etc/haproxy/haproxy.cfg || true
 		exit 1
 	fi
-	systemctl enable --now haproxy
-	echo "HAProxy edge up: PROXY protocol to the loopback backends, gentle flood limits"
-	# hapwatch turns the edge's stick-table into FLOOD_BLOCKED events. enable --now;
-	# it restarts on failure until a slot binary is deployed, so it self-heals into
-	# a running state without a second provisioning pass.
-	systemctl enable --now sweetty-hapwatch.service || true
-	echo "sweetty-hapwatch enabled: FLOOD_BLOCKED events from the edge"
+	# Enable both now, but START them at the end of provisioning, after sshd has
+	# moved off port 22 (see "Start the edge"). HAProxy must bind :22; if it starts
+	# while the real sshd still holds 22, that bind fails and HAProxy, being
+	# all-or-nothing, binds NONE of its frontends while still reporting "Ready", so
+	# it silently fronts nothing and the slot health-check (which probes through it)
+	# times out. hapwatch reads HAProxy's socket, so it waits for the same moment.
+	systemctl enable haproxy sweetty-hapwatch.service
+	echo "HAProxy edge configured (PROXY protocol, gentle flood limits); starts after sshd leaves :22"
 else
 	# Direct topology: ensure no edge from a prior haproxy provisioning still fronts
 	# the ports (idempotent re-provision into a different topology).
@@ -366,6 +371,18 @@ chattr +a "${INSTALL_DIR}/sweetty.log" 2>/dev/null \
 # ---------------------------------------------------------------------------
 log "Restart sshd"
 systemctl restart ssh || systemctl restart sshd || true
+
+# ---------------------------------------------------------------------------
+# Start the edge now that sshd has vacated port 22, so HAProxy binds :22 and the
+# other public ports cleanly. Deferred to here (rather than the HAProxy step
+# above) precisely so its all-or-nothing bind cannot fail against the sshd that
+# still held 22 at that point. restart (not start) keeps re-provisioning idempotent.
+if [[ "${TOPOLOGY:-haproxy}" == "haproxy" ]]; then
+	log "Start the edge"
+	systemctl restart haproxy
+	systemctl restart sweetty-hapwatch.service || true
+	echo "HAProxy edge started: public ports bound"
+fi
 
 # ---------------------------------------------------------------------------
 # Admin access summary. Real SSH is on a per-instance randomized port reachable

@@ -38,7 +38,7 @@ write_files:
       PROVISION_REF="main"
       PROVISION_SHA="REPLACE_WITH_REVIEWED_COMMIT_SHA"
       SWEETTY_REPO="adrianmcphee/sweetty"
-      RELEASE_TAG="v0.1.7"
+      RELEASE_TAG="v0.1.8"
       SWEETTY_USER="sweetty"
       INSTALL_DIR="/opt/sweetty"
       DEPLOY_USER="deploy"
