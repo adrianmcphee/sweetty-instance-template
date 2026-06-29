@@ -22,6 +22,15 @@ __DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl disable sweetty-green.se
 __DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl status sweetty-green.service
 __DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
 
+# Edge lifecycle. The deploy user operates the box, so it can inspect and bounce
+# the HAProxy edge and the flood watcher (to recover the edge, or diagnose it).
+# status prints the recent journal, which is enough to debug the edge without a
+# separate log-reading grant. These manage service state only, not config.
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl status haproxy.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl restart haproxy.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl status sweetty-hapwatch.service
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl restart sweetty-hapwatch.service
+
 # Reboot the host. Operational (the deploy user is the only login), and it lets a
 # deploy validate that the box survives a reboot unattended: services auto-start,
 # the firewall reloads, and the honeypot comes back. A reboot grants no privilege.
