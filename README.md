@@ -8,6 +8,37 @@ The two are kept separate on purpose, so the honeypot and the way it is operated
 can evolve independently. Nothing in here belongs in the product, and nothing in
 the product hard-codes how it gets deployed.
 
+## Architecture at a glance
+
+The honeypot ports face the world behind an HAProxy edge; the management plane has
+no public footprint. The operator reaches the console only by tunnelling the real
+SSH (on a randomized, operator-only port), and the box's sole outbound traffic is
+shipping its log. [`ARCHITECTURE.md`](./ARCHITECTURE.md) breaks down each piece.
+
+```mermaid
+flowchart TB
+    ATK([Scanners and attackers]) -->|honeypot ports| EDGE
+    OP([Operator<br/>OPERATOR_IP only]) -->|SSH key| SSHD
+
+    subgraph HOST["Hardened Ubuntu host (assume it will be lost)"]
+        direction TB
+        EDGE["HAProxy edge<br/>public ports 21 22 23 80 443 2323 8080<br/>per-source flood limits + PROXY protocol"]
+        SW["sweetty, blue/green slots<br/>unprivileged, loopback backends<br/>personas, VFS, brute-force, WordPress trap"]
+        SSHD["Admin SSH<br/>randomized port, operator-only"]
+        PORTAL["Management console<br/>127.0.0.1:8888"]
+        FW{{"nftables: egress denied by default,<br/>admin SSH open only to OPERATOR_IP"}}
+        LOG[("sweetty.log<br/>append-only")]
+
+        EDGE -->|"send-proxy (real source IP)"| SW
+        SW --> PORTAL
+        SW --> LOG
+        SSHD -.->|"ssh -L tunnel"| PORTAL
+        PORTAL -->|stats console| EDGE
+    end
+
+    LOG -->|rsyslog over TLS| COLL[("Off-host collector")]
+```
+
 ## Set up a box from scratch
 
 This is a GitHub template repository: click **Use this template**, make a

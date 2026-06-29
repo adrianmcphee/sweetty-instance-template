@@ -1,141 +1,128 @@
-# AGENTS.md - bringing up a SweeTTY box, for an automated agent
+# Agent Instructions: sweetty-instance-template
 
-This is the deterministic procedure for an agent (or a human who wants an exact
-script) to turn a fresh host into a running, hardened SweeTTY honeypot over root
-SSH. It is the machine-readable form of the "Path B: over SSH" walkthrough in
-[README.md](./README.md). Follow it in order. Do not improvise the firewall or the
-SSH cutover; the safety rail in step 4 exists because a wrong operator address
-locks everyone out of the box.
+Read [`README.md`](./README.md) and [`ARCHITECTURE.md`](./ARCHITECTURE.md) first.
+This repo turns a fresh Ubuntu host into a hardened
+[SweeTTY](https://github.com/adrianmcphee/sweetty) honeypot running a pinned
+release. The product repo builds the binary; this repo provisions and operates it.
+Everything below is the working contract.
 
-## Preconditions
+---
 
-- Root SSH to a **fresh Ubuntu 24.04/26.04, x86_64** host that exists only to be
-  attacked. Confirm `ssh root@HOST true` works and `uname -m` is `x86_64`.
-- A **deploy SSH keypair**. You hold the private key; you will install the public
-  key (`deploy.pub`) on the box. Never put a private key on the box.
-- A **pinned release tag** that exists at
-  https://github.com/adrianmcphee/sweetty/releases (e.g. `v0.1.6`). Never `latest`.
+## Hard rules (do not violate)
 
-## Step 1 - Determine OPERATOR_IP (do not guess)
+1. **No AI attribution in git commits.** No `Co-Authored-By`, no "Generated with",
+   no emoji. Commits represent human authorship. Enforced by the commit-msg hook
+   (`make hooks` installs it).
+2. **No em dashes**, anywhere, in code, configs, or docs. Enforced by `make check`.
+3. **Never commit an instance's secrets.** `sweetty.instance.env` (operator address,
+   log endpoint) is gitignored; the committed `*.example` carries only placeholders.
+4. **Never deploy `latest`.** Always an explicit release tag, verified against
+   `checksums.txt` before the slot swap.
+5. **Never widen admin SSH beyond `OPERATOR_IP`.** The nftables renderer rejects an
+   all-internet wildcard; do not work around it.
 
-`OPERATOR_IP` is the single public IP **the human operator will connect from**,
-and admin SSH is firewalled to it alone. A wrong value bricks management.
+---
 
-If you are running from the operator's own machine/network, the host already sees
-that address as the source of your root session - read it back rather than
-inventing it, then confirm with the operator:
+## What this is
 
+A provisioning and deploy layer. `provision.sh` hardens a fresh host (an
+unprivileged honeypot user, an nftables deny-by-default firewall, a randomized
+operator-only admin SSH, the HAProxy edge, log shipping, systemd slot units).
+`deploy.sh` brings up a pinned release with slotdeploy's blue/green swap.
+`bootstrap.sh` runs both end to end over root SSH. The threat model is
+assume-escape: treat the box as something you will lose.
+
+---
+
+## Bringing up a box over root SSH
+
+A deterministic procedure. The one value that must be right is `OPERATOR_IP`: admin
+SSH is firewalled to it alone, so a wrong value locks management out. There is no
+in-band failsafe by design (a box-reverting timer is fragile and the box is
+disposable); recover a lockout by rebuilding, or via the provider serial console.
+The safe move is to not get it wrong: an agent running from the operator's own
+machine reads the address back from the live session rather than guessing.
+
+### 1. Preconditions
+- Root SSH to a fresh Ubuntu 24.04/26.04, x86_64 host that exists only to be attacked.
+- A deploy SSH keypair. You install the public key; never put a private key on the box.
+- A pinned release tag from https://github.com/adrianmcphee/sweetty/releases.
+
+### 2. Determine OPERATOR_IP (do not guess)
+Running from the operator's machine/network, the host already sees that address as
+your session source. Read it back and confirm with the operator:
 ```bash
-ssh root@HOST 'echo "${SSH_CONNECTION%% *}"'   # first field = operator's public IP
+ssh root@HOST 'echo "${SSH_CONNECTION%% *}"'   # first field = operator public IP
 ```
+If you are not on the operator's network, you must be told the IP explicitly. Never
+substitute your own egress IP.
 
-If you are not on the operator's network (e.g. a cloud runner), you must be told
-the operator's IP explicitly. Do not substitute your own egress IP.
-
-## Step 2 - Stage the repo, env, and deploy key onto the host
-
-Render `sweetty.instance.env` from `sweetty.instance.env.example` with these
-values, then copy everything up:
-
-- `OPERATOR_IP` from step 1
-- `RELEASE_TAG` = the pinned tag
-- `ADMIN_SSH_PORT=""` - leave empty so provisioning randomizes the real-SSH port
-  (no fleet-wide tell). You will read the chosen port back in step 6.
-- `TOPOLOGY="haproxy"` (default), `PORTAL_PORT="8888"`
-- `DNS_RESOLVERS`, and `LOG_ENDPOINT`/`LOG_TRANSPORT` if shipping logs off-host
-
+### 3. Stage the repo, env, and key
+Render `sweetty.instance.env` from the example: set `OPERATOR_IP` and `RELEASE_TAG`,
+leave `ADMIN_SSH_PORT=""` to randomize the real-SSH port, keep `TOPOLOGY="haproxy"`.
+Then:
 ```bash
 rsync -a --exclude='.git' ./ root@HOST:/root/sweetty-instance-template/
 scp sweetty.instance.env root@HOST:/root/sweetty-instance-template/sweetty.instance.env
 scp deploy.pub          root@HOST:/root/deploy.pub
+ssh root@HOST 'grep -E "^(OPERATOR_IP|RELEASE_TAG|ADMIN_SSH_PORT|TOPOLOGY)=" /root/sweetty-instance-template/sweetty.instance.env'
 ```
 
-## Step 3 - Sanity-check before you change the perimeter
-
-```bash
-ssh root@HOST 'cd /root/sweetty-instance-template && \
-  grep -E "^(OPERATOR_IP|RELEASE_TAG|ADMIN_SSH_PORT|TOPOLOGY)=" sweetty.instance.env'
-```
-
-Confirm `OPERATOR_IP` is the operator's address and `ADMIN_SSH_PORT=""`.
-
-## Step 4 - Arm the failsafe (REQUIRED before provisioning)
-
-Provisioning moves SSH off port 22, disables root login, and firewalls admin to
-`OPERATOR_IP`. If that address is wrong, you finish provisioning and then cannot
-get back in. Arm a dead-man's switch first: a transient timer that, unless you
-disarm it, reverts SSH to root-on-22 and flushes the firewall so you can recover.
-
-```bash
-ssh root@HOST 'rm -f /tmp/sweetty-failsafe-disarm; \
-  systemd-run --unit=sweetty-failsafe --on-active=20min --timer-property=AccuracySec=1s \
-  /bin/sh -c "[ -e /tmp/sweetty-failsafe-disarm ] && exit 0; \
-    nft flush ruleset 2>/dev/null; \
-    rm -f /etc/ssh/sshd_config.d/00-sweetty.conf; \
-    systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; true"'
-```
-
-You disarm it in step 6, only after confirming you can still get in.
-
-## Step 5 - Bootstrap (provision + deploy key + first release + verify)
-
-One root command does everything and refuses to "succeed" unless the honeypot is
-actually serving. The first deploy runs **as the deploy user** so nothing
-root-owned is left in its workspace:
-
+### 4. Bootstrap (provision + deploy key + first release + verify)
+One root command; it refuses to succeed unless the honeypot is actually serving,
+and the first deploy runs as the deploy user so nothing root-owned is left behind:
 ```bash
 ssh root@HOST 'cd /root/sweetty-instance-template && \
   INSTANCE_ENV=$PWD/sweetty.instance.env DEPLOY_PUBKEY=/root/deploy.pub ./bootstrap.sh'
 ```
+It ends by printing the randomized admin port and the exact login + tunnel commands
+(also saved to `/root/sweetty-access.txt`). If it prints `VERIFY FAILED`, stop and
+read the log; do not hand off.
 
-It ends by printing the randomized admin port and the exact login + tunnel
-commands. If it prints `VERIFY FAILED`, stop and read the output; do not disarm.
-
-## Step 6 - Confirm access, then disarm
-
-Read the chosen port and prove the operator's real path works **before** removing
-the safety rail:
-
+### 5. Confirm operator access
+Provisioning moved sshd to the randomized port and disabled root login. Read the
+port back and prove the operator's real path works:
 ```bash
 PORT=$(ssh root@HOST 'sed -n "s/^ADMIN_SSH_PORT=\"\\(.*\\)\"/\\1/p" /root/sweetty-instance-template/sweetty.instance.env')
-ssh -p "$PORT" -o ConnectTimeout=10 deploy@HOST 'echo deploy-login-ok && systemctl is-active "sweetty-$(cat /opt/sweetty/.active-slot)".service'
+ssh -p "$PORT" deploy@HOST 'echo ok; systemctl is-active "sweetty-$(cat /opt/sweetty/.active-slot)".service haproxy'
 ```
+If you cannot log in as deploy, the operator IP or key is wrong: rebuild (or recover
+via the provider serial console), fix the value, and redo from step 3.
 
-Only if that returns `deploy-login-ok` and `active`, disarm:
-
-```bash
-ssh -p "$PORT" deploy@HOST 'sudo touch /tmp/sweetty-failsafe-disarm; sudo systemctl stop sweetty-failsafe.timer 2>/dev/null; true'
-```
-
-If you could **not** log in as `deploy`, the operator IP or key is wrong: let the
-failsafe fire (or trigger recovery via the provider console), fix the value, and
-redo from step 2. Never disarm a box you cannot get into.
-
-## Step 7 - Reboot and verify durability (REQUIRED)
-
-A honeypot must survive an unattended reboot. Prove it:
-
+### 6. Reboot and verify durability (required)
+A honeypot must survive an unattended reboot. The randomized SSH port also makes a
+clean boot the moment HAProxy binds the public ports (port 22 is free from boot):
 ```bash
 ssh -p "$PORT" deploy@HOST 'sudo systemctl reboot'; sleep 75
 ssh -p "$PORT" deploy@HOST \
-  'systemctl is-active "sweetty-$(cat /opt/sweetty/.active-slot)".service nftables; \
+  'systemctl is-active "sweetty-$(cat /opt/sweetty/.active-slot)".service nftables haproxy; \
    for p in 21 22 23 80 443 2323 8080; do ss -tln | grep -q ":$p " && echo "$p ok" || echo "$p MISSING"; done; \
    curl -s -o /dev/null -w "http %{http_code}\n" http://127.0.0.1:80/'
 ```
+Expect the slot, `nftables`, and `haproxy` all active; every honeypot port bound
+(through HAProxy); and `http 200`. A reboot that does not come back clean is a
+provisioning defect, not a one-off.
 
-Expect the slot `active`, `nftables` `active`, every honeypot port `ok`, and
-`http 200`. A reboot that does not come back clean is a provisioning defect.
-
-## Step 8 - Hand off
-
-Give the operator the access block verbatim from `/root/sweetty-access.txt`: the
-admin port, the `ssh -p PORT deploy@HOST` login, and the
+### 7. Hand off
+Give the operator the block from `/root/sweetty-access.txt`: the admin port, the
+`ssh -p PORT deploy@HOST` login, and the
 `ssh -fN -L 8888:127.0.0.1:8888 deploy@HOST -p PORT` tunnel to `http://localhost:8888`.
 
-## Invariants (do not violate)
+---
 
-- Never deploy `latest`; always a pinned tag verified against `checksums.txt`.
-- Never widen admin SSH beyond `OPERATOR_IP`; the renderer rejects an all-internet
-  wildcard, and so should you.
-- Never leave a private key on the host. Never disarm the failsafe before
-  confirming `deploy` login. Never skip the reboot check.
+## Verification (before any commit)
+
+```bash
+make check        # em-dash scan, shellcheck, nftables + haproxy config validation
+```
+
+CI runs the same. If you cannot run a check, say so and say what you did run.
+
+---
+
+## Commit discipline
+
+- Atomic commits, imperative scoped messages (e.g. `fix(provision): start HAProxy
+  after sshd leaves :22`). No AI attribution (hard rule).
+- Push as you go; `main` tracks `origin`.
+- Bump the pinned `RELEASE_TAG` in the examples on purpose, never to `latest`.

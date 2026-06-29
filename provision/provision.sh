@@ -306,9 +306,11 @@ cat > /etc/nftables.conf <<'EOF'
 include "/etc/nftables.d/sweetty.nft"
 EOF
 nft -c -f /etc/nftables.d/sweetty.nft
-systemctl enable nftables
-nft -f /etc/nftables.conf
-echo "nftables loaded"
+# enable --now starts the unit, which runs `nft -f /etc/nftables.conf`: the ruleset
+# loads now AND `systemctl is-active nftables` reads active, instead of the
+# confusing "inactive" that hand-loading the ruleset leaves behind.
+systemctl enable --now nftables
+echo "nftables active"
 
 # ---------------------------------------------------------------------------
 log "Sysctl hardening"

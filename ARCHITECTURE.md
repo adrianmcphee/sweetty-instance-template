@@ -31,9 +31,9 @@ flowchart TB
 
 The operator never opens a management port. They `ssh -L <local>:127.0.0.1:<portal_port> operator@host -p <admin_ssh_port>` and open the portal at `localhost`. The admin SSH port is randomized per instance from a pool of http-like ports so it blends in as a web service, and it is the only port the firewall opens to the operator.
 
-## Optional HAProxy edge
+## HAProxy edge (the default)
 
-HAProxy is optional. It fronts only the honeypot ports, to preserve the real attacker source IP (PROXY protocol) and route blue/green deploys. It does not front the portal, which stays loopback and SSH-tunnel-only. Its stats console is reached through the portal over that same tunnel.
+HAProxy is the default edge (`TOPOLOGY=haproxy`; set `direct` to have sweetty bind the public ports itself). It fronts only the honeypot ports, to preserve the real attacker source IP (PROXY protocol), shed obvious floods with gentle per-source limits (turned into `FLOOD_BLOCKED` events by `sweetty-hapwatch`), and route blue/green deploys. It does not front the portal, which stays loopback and SSH-tunnel-only. Its stats console is reached through the portal over that same tunnel. It is started after sshd has moved off port 22, so its bind on :22 succeeds.
 
 ```mermaid
 flowchart LR
@@ -50,7 +50,7 @@ Provisioning hardens the host and lays out the slots; deploys are pinned, checks
 ```mermaid
 flowchart LR
     ENV["sweetty.instance.env"] --> PROV["provision.sh<br/>users, firewall, sshd,<br/>log shipping, slots"]
-    REL["ghcr.io / GitHub release<br/>pinned tag + checksums"] --> DEP["deploy.sh<br/>slotdeploy blue/green"]
+    REL["GitHub release<br/>pinned tag + checksums"] --> DEP["deploy.sh<br/>slotdeploy blue/green"]
     PROV --> HOST["Hardened host"]
     DEP --> HOST
 ```
