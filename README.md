@@ -8,6 +8,20 @@ The two are kept separate on purpose, so the honeypot and the way it is operated
 can evolve independently. Nothing in here belongs in the product, and nothing in
 the product hard-codes how it gets deployed.
 
+In short:
+
+- **The product** ([sweetty](https://github.com/adrianmcphee/sweetty)) builds the
+  honeypot binary and publishes it as a pinned release (`vX.Y.Z`).
+- **This repo** provisions a fresh Ubuntu host and deploys that pinned release into
+  a blue/green slot behind a hardened edge.
+
+You keep a private copy of this repo: it carries your operator address and instance
+config and is the source of truth for one box. Provisioning copies that same repo
+onto the host, and the on-host copy is where you run deploys and updates with `make
+deploy TAG=vX.Y.Z`. You never build or run the honeypot from your laptop; the host
+pulls a published release tag, verifies its checksum, and rolls it into the
+inactive slot. Initial setup and the deploy/rollback commands are below.
+
 ## Architecture at a glance
 
 The honeypot ports face the world behind an HAProxy edge; the management plane has
@@ -140,9 +154,22 @@ reach the instance metadata service on boot).
   # then open http://localhost:8888   (stop it later: pkill -f '8888:127.0.0.1:8888')
   ```
 
-- **Update later:** `ssh -p ADMIN_SSH_PORT deploy@HOST`, then
-  `cd sweetty-instance-template && make deploy TAG=vX.Y.Z` (pinned, verified,
-  blue/green).
+- **Update to a new release:** SSH to the box and run the deploy from the on-host
+  copy of this repo. It pulls the tag, verifies its checksum, installs it into the
+  inactive slot, health-checks it, and flips with a sub-second cutover:
+
+  ```bash
+  ssh -p ADMIN_SSH_PORT deploy@HOST
+  cd sweetty-instance-template && make deploy TAG=vX.Y.Z
+  ```
+
+- **Roll back** to the previous slot (its binary is still on disk, so this is an
+  instant switch, not a rebuild), and **check** which slot and release is live:
+
+  ```bash
+  cd sweetty-instance-template && make rollback
+  cd sweetty-instance-template && make status
+  ```
 
 For several honeypots, use one private repo per instance, or one repo with a
 branch or directory per instance.
@@ -158,7 +185,7 @@ branch or directory per instance.
 - Intrusion-detection tripwires (auditd, optional osquery) tuned to alarm only on
   events the honeypot is contractually unable to produce.
 - Off-host, append-only log shipping.
-- An optional HAProxy edge for source-IP preservation and zero-downtime deploys.
+- A HAProxy edge (the default topology) for real-source-IP preservation and gentle flood limiting.
 - A pinned, checksum-verified blue/green deploy built on
   [slotdeploy](https://github.com/adrianmcphee/slotdeploy).
 
@@ -322,11 +349,14 @@ one, and flip the active marker. Roll back with
 `slotdeploy rollback --config deploy/slotdeploy.yaml`; the previous binary is
 still on disk, so it is a switch, not a rebuild.
 
-The honeypot binds fixed low ports, which a single process must own, so the
-default direct topology trades a sub-second cutover gap for never running two
-attack surfaces at once. A honeypot can miss a few connections during a deploy; it
-must not expose a half-bound instance. Choose the HAProxy topology if you need
-genuinely zero-downtime deploys. Full detail in `deploy/README.md`.
+Each deploy is a sub-second stop-start cutover: slotdeploy stops the active slot
+and starts the new one, because the two slots share one set of backend ports and a
+port can be held by only one process. That trade is deliberate for a honeypot: it
+can miss a few connections during a planned deploy, but it must never run two
+attack surfaces at once or expose a half-bound instance. This holds in both the
+HAProxy (default) and direct topologies as shipped; the HAProxy edge preserves the
+real source IP and sheds floods, it does not remove the cutover gap. Full detail in
+`deploy/README.md`.
 
 ## Conventions
 

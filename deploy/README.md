@@ -29,14 +29,14 @@ slotdeploy gives a small, auditable blue/green model: two named slots, an active
 marker, a health gate, and a rollback that does not rebuild anything. We use its
 `commands` runtime against the two systemd slot units.
 
-The honeypot binds fixed low ports and a port can be held by only one process,
-so in the default direct topology the two slots cannot run simultaneously. The
-deploy stops the old slot and starts the new one, a sub-second gap. For a honeypot
-that is the right trade: missing a handful of connections during a deploy is
-fine; running two attack surfaces at once, or exposing a half-bound instance, is
-not. If you need genuinely zero-downtime deploys, run the HAProxy topology, where
-the slots bind distinct loopback ports and the edge routes to the healthy one
-(see `../haproxy/README.md`).
+The two slots share one set of backend ports, and a port can be held by only one
+process, so they cannot run simultaneously. The deploy stops the old slot and
+starts the new one, a sub-second gap. For a honeypot that is the right trade:
+missing a handful of connections during a deploy is fine; running two attack
+surfaces at once, or exposing a half-bound instance, is not. This holds in both the
+HAProxy (default) and direct topologies as shipped. True zero-downtime would
+require giving each slot its own backend ports and an edge that switches between
+them, which is not currently set up.
 
 ## Rollback
 

@@ -5,13 +5,14 @@ env_file: /opt/sweetty/deploy/slotdeploy.env
 active_marker: /opt/sweetty/.active-slot
 
 # Command runtime: each slot is a systemd unit (sweetty-blue / sweetty-green)
-# running a pinned binary. The honeypot binds fixed low ports (21..8080) and a
-# port can be held by only one process, so the two slots cannot run at once in
-# this default direct topology. The cutover therefore stops the old slot and
-# starts the new one, which costs a sub-second gap. For a sensor that is fine:
-# missing a few connections during a deploy is acceptable; running two attack
-# surfaces at once, or briefly exposing a half-bound instance, is not. For true
-# zero-downtime blue/green, switch to the HAProxy topology (see haproxy/README.md).
+# running a pinned binary. The two slots share one set of backend ports, and a
+# port can be held by only one process, so they cannot run at once. The cutover
+# therefore stops the old slot and starts the new one, which costs a sub-second
+# gap. For a sensor that is fine: missing a few connections during a deploy is
+# acceptable; running two attack surfaces at once, or briefly exposing a
+# half-bound instance, is not. This holds in both the HAProxy (default) and direct
+# topologies; the edge does not remove the cutover gap. True zero-downtime would
+# need distinct per-slot backend ports and an edge backend-switch (not set up).
 runtime:
   type: commands
   start:

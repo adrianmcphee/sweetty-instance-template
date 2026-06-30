@@ -1,15 +1,20 @@
-# Optional HAProxy edge
+# HAProxy edge
 
-This layer is **optional**. The default topology has sweetty bind the public
-honeypot ports directly; that is simpler and is what provision.sh sets up. Reach
-for HAProxy only when you specifically want one of these:
+This is the **default** topology (`TOPOLOGY="haproxy"`, what `provision.sh` sets
+up): HAProxy fronts the public honeypot ports and sweetty binds loopback backends
+behind it. The simpler **direct** topology (`TOPOLOGY="direct"`), where sweetty
+binds the public ports itself with no proxy, is the alternative. Run the edge for:
 
 - **Real-source-IP preservation through a proxy.** If you put anything in front
   of the honeypot, sweetty must still log the real attacker IP, not the proxy's.
-- **True zero-downtime blue/green.** With the edge in place, the two slots bind
-  distinct loopback ports and HAProxy routes to whichever is healthy, so a deploy
-  never drops a connection (the default direct topology accepts a sub-second
-  cutover instead).
+- **Flood shedding at the edge.** A stick-table circuit-breaker drops only an
+  obvious volumetric flood (see "Gentle rate limiting only" below), and the
+  `sweetty-hapwatch` unit logs each as a `FLOOD_BLOCKED` event.
+
+The edge does NOT make deploys zero-downtime. As shipped, both topologies do a
+sub-second stop-start cutover at deploy time, because the two slots share backend
+ports. True zero-downtime would need distinct per-slot ports and an edge
+backend-switch, which is not currently set up.
 
 HAProxy does NOT front the management portal. The portal binds loopback in every
 topology and is reached over the management SSH tunnel, so there is nothing to
@@ -105,5 +110,5 @@ the only client that can reach `127.0.0.1:19000` is the local portal proxy, and 
 only way to reach the portal is through the operator's SSH tunnel. Nothing off-host
 can reach the bind, so the SSH tunnel is the single gate.
 
-If you run the default direct topology (no HAProxy), there is no stats console to
+If you run the direct topology (no HAProxy), there is no stats console to
 proxy; drop the `admin_consoles` entry from the config.
