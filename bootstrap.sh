@@ -49,8 +49,8 @@ fi
 echo "### bootstrap: deploy ${RELEASE_TAG} (as ${DEPLOY_USER}) ###"
 # Place the repo in the deploy user's home and run the FIRST deploy as that user,
 # identical to every later `make deploy`. Running it as root instead would leave
-# root-owned state (the /tmp staging dir) that then blocks a deploy-user re-deploy,
-# and it means ongoing deploys are exercised from the very first one.
+# root-owned state (the deploy staging dir) that then blocks a deploy-user
+# re-deploy, and it means ongoing deploys are exercised from the very first one.
 DEPLOY_HOME="$(getent passwd "${DEPLOY_USER}" | cut -d: -f6)"
 DEPLOY_HOME="${DEPLOY_HOME:-/home/${DEPLOY_USER}}"
 DEPLOY_CHECKOUT="${DEPLOY_HOME}/sweetty-instance-template"

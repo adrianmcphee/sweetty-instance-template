@@ -101,19 +101,23 @@ if [[ ! -f "${WORK}/sweetty" ]]; then
 fi
 
 # Stage the verified binary at the fixed path the deploy sudoers grant reads
-# from. The deploy user owns this staging dir (no sudo needed); the next step is
-# a narrowly-granted "sudo install" that copies this fixed source into the slot
-# as root:sweetty, which is the only privileged action in the deploy.
-rm -rf /tmp/sweetty-deploy 2>/dev/null || true
-install -d -m 0755 /tmp/sweetty-deploy
-install -m 0755 "${WORK}/sweetty" /tmp/sweetty-deploy/sweetty
+# from. Staging lives under the deploy-owned ${INSTALL_DIR}/deploy tree (0750
+# deploy:deploy from provision.sh), NOT a world-visible /tmp: under assume-hostile-
+# sweetty-user the sweetty user cannot even traverse into it, so it cannot swap the
+# staged binary between this copy and the sudo install below. The deploy user owns
+# it (no sudo needed); the next step is a narrowly-granted "sudo install" that
+# copies this fixed source into the slot as root:sweetty, the only privileged
+# action in the deploy.
+STAGING_DIR="${INSTALL_DIR}/deploy/staging"
+install -d -m 0750 "${STAGING_DIR}"
+install -m 0750 "${WORK}/sweetty" "${STAGING_DIR}/sweetty"
 
 # Determine the inactive slot the same way slotdeploy will.
 ACTIVE="$(cat "${INSTALL_DIR}/.active-slot" 2>/dev/null || echo blue)"
 if [[ "${ACTIVE}" == "blue" ]]; then TARGET="green"; else TARGET="blue"; fi
 echo "=== Installing into the ${TARGET} slot (active is ${ACTIVE}) ==="
 
-sudo install -o root -g sweetty -m 0750 /tmp/sweetty-deploy/sweetty "${INSTALL_DIR}/sweetty-${TARGET}"
+sudo install -o root -g sweetty -m 0750 "${STAGING_DIR}/sweetty" "${INSTALL_DIR}/sweetty-${TARGET}"
 sudo setcap cap_net_bind_service=+ep "${INSTALL_DIR}/sweetty-${TARGET}"
 
 # slotdeploy needs its env file to exist (it may be empty).

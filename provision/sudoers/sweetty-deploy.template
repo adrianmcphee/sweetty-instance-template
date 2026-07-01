@@ -37,9 +37,10 @@ __DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl restart sweetty-hapwatch
 __DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/systemctl reboot
 
 # Install a verified, checksum-matched binary into a slot, then re-grant the
-# low-port capability on it. The source path is fixed so nothing else can be
-# slipped in through this grant.
-__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/install -o root -g sweetty -m 0750 /tmp/sweetty-deploy/sweetty /opt/sweetty/sweetty-blue
-__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/install -o root -g sweetty -m 0750 /tmp/sweetty-deploy/sweetty /opt/sweetty/sweetty-green
+# low-port capability on it. The source path is a fixed literal under the deploy-
+# owned staging dir (0750 deploy:deploy), so the hostile sweetty user cannot reach
+# it and nothing else can be slipped in through this grant.
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/install -o root -g sweetty -m 0750 /opt/sweetty/deploy/staging/sweetty /opt/sweetty/sweetty-blue
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/install -o root -g sweetty -m 0750 /opt/sweetty/deploy/staging/sweetty /opt/sweetty/sweetty-green
 __DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/sbin/setcap cap_net_bind_service=+ep /opt/sweetty/sweetty-blue
 __DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/sbin/setcap cap_net_bind_service=+ep /opt/sweetty/sweetty-green

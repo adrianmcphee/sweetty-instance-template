@@ -110,6 +110,13 @@ log "Layout: ${INSTALL_DIR}"
 install -d -m 0751 -o root -g "${SWEETTY_USER}" "${INSTALL_DIR}"
 install -d -m 0750 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" "${INSTALL_DIR}/deploy"
 install -d -m 0700 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" "${INSTALL_DIR}/deploy/slots"
+# Staging dir for a deploy's verified binary. Deploy-owned so a deploy writes it
+# with no sudo, and the hostile sweetty user cannot reach it: it sits under the
+# deploy-only 0750 subtree, not a world-visible /tmp. deploy.sh installs the
+# verified binary here and a narrow sudo grant copies it from this fixed path into
+# the slot. Pre-created here so the dir is deploy-owned even when the first deploy
+# runs as root (cloud-init), keeping later deploy-user re-deploys working.
+install -d -m 0750 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" "${INSTALL_DIR}/deploy/staging"
 
 # The config is operator-owned; never clobber an existing one, only seed it the
 # first time.
