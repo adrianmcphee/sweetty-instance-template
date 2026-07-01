@@ -51,5 +51,9 @@ place, so a tripwire firing usually means a prevention layer was bypassed:
 - If you add a feature to sweetty that legitimately resolves DNS or calls out,
   these rules will fire by design. That is a signal to reconsider, not to widen
   the rule.
-- Set `-e 2` in `auditd/sweetty.rules` to make the audit config immutable until
-  reboot once you are happy with it.
+- `auditd/sweetty.rules` ends with `-e 2`, which makes the audit config immutable
+  until the next reboot. Under the assume-escape posture a root-level escape could
+  otherwise run `auditctl -e 0` and silence every tripwire, so the config is locked
+  for the life of the boot. It must stay the last rule augenrules loads. A
+  consequence: re-provisioning cannot reload these rules until a reboot, which is
+  the deliberate trade for a tamper-proof audit config.

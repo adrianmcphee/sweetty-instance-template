@@ -51,6 +51,10 @@
 ## Module loading. A honeypot host loads no modules at runtime.
 -a always,exit -F arch=b64 -S init_module -S finit_module -S delete_module -k modules
 
-## Lock the audit configuration so it cannot be silently disabled. Enable once
-## the rules above are stable; it takes effect until the next reboot.
-## -e 2
+## Lock the audit configuration until the next reboot. This MUST be the last rule
+## augenrules loads. Under the assume-escape posture a root-level escape could
+## otherwise run `auditctl -e 0` and silence every tripwire above; -e 2 makes the
+## ruleset immutable, so changing or disabling it now requires a reboot, itself a
+## loud, logged event on a box whose only job is to be attacked. Deliberate: the
+## audit configuration is fixed for the life of the boot.
+-e 2
