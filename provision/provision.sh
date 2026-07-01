@@ -349,8 +349,20 @@ if [[ -n "${LOG_ENDPOINT:-}" && -f "${REPO_ROOT}/logging/rsyslog/60-sweetty.conf
 				|| { echo "ERROR: rsyslog-gnutls unavailable; refusing to ship logs in plaintext" >&2; exit 1; }
 		fi
 		LOG_CA_FILE="${LOG_CA:-/etc/ssl/certs/ca-certificates.crt}"
+		# Pin the collector's certificate name. x509/name on its own only proves the
+		# peer holds a cert from a trusted CA, not WHICH host it is, so any host with
+		# any CA-signed cert could receive the exfiltrated log. Pin the permitted peer
+		# to the collector's cert name (the endpoint host by default; override with
+		# LOG_PEER_NAME when the cert subject/SAN differs from the name you connect
+		# to). Fail closed: refuse to ship if there is no name to authenticate
+		# against, rather than trust any CA-signed peer.
+		LOG_PEER="${LOG_PEER_NAME:-${LOG_HOST}}"
+		if [[ -z "${LOG_PEER}" ]]; then
+			echo "ERROR: TLS log forwarding needs a peer name to authenticate the collector; set LOG_PEER_NAME (or a host in LOG_ENDPOINT)" >&2
+			exit 1
+		fi
 		TLS_GLOBAL="global(defaultNetstreamDriver=\"gtls\" defaultNetstreamDriverCAFile=\"${LOG_CA_FILE}\")"
-		TLS_PARAMS="\n         StreamDriver=\"gtls\" StreamDriverMode=\"1\" StreamDriverAuthMode=\"x509/name\""
+		TLS_PARAMS="\n         StreamDriver=\"gtls\" StreamDriverMode=\"1\" StreamDriverAuthMode=\"x509/name\" StreamDriverPermittedPeers=\"${LOG_PEER}\""
 	fi
 	sed -e "s|__LOG_HOST__|${LOG_HOST}|g" \
 		-e "s|__LOG_PORT__|${LOG_PORT}|g" \
