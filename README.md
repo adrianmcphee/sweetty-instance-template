@@ -88,8 +88,11 @@ create the VM and never SSH in to set it up.
    `/root/sweetty-access.txt`, which you read from the provider's serial console.
 2. Edit `cloud-init/user-data.yaml`: copy those env values into its
    `sweetty.instance.env` block, paste your deploy **public** key into the
-   `deploy.pub` block, and set `PROVISION_SHA` to the template commit you reviewed
-   (`git rev-parse HEAD`).
+   `deploy.pub` block, and leave `PROVISION_REF` at the default release tag (or pin
+   your own reviewed tag). Set `PROVISION_SHA` to that tag's commit
+   (`git rev-parse v0.2.0^{commit}`). Pin a tag rather than a moving branch: a tag
+   names one reviewed commit and never moves, whereas a branch tip drifts under the
+   pin and would power a re-provisioned box off until you re-review and bump the SHA.
 3. Create the VM and paste that `user-data.yaml` into the provider's **Cloud-Init /
    User-Data** field. **That field is easy to leave blank, and if you do, nothing
    provisions**: the box comes up as plain Ubuntu. Wait ~3-5 minutes.
@@ -279,10 +282,11 @@ sweetty-instance-template/
 
    When cloud-init runs it at first boot, it first fetches this provisioning code
    and verifies it against a pinned commit before running any of it as root, since
-   the whole perimeter comes from here. Set `PROVISION_SHA` (and `PROVISION_REF`,
-   preferably an immutable tag) in the cloud-init instance env to the commit you
-   reviewed; on a mismatch the box powers itself off instead of provisioning from an
-   unknown tree.
+   the whole perimeter comes from here. `PROVISION_REF` defaults to an immutable
+   release tag: a tag names one reviewed commit and never moves, so the pin holds,
+   whereas a moving branch would drift its tip under the pin. Set `PROVISION_SHA` to
+   that tag's commit (`git rev-parse <tag>^{commit}`); on a mismatch the box powers
+   itself off instead of provisioning from an unknown tree.
 4. Add the deploy public key to the `deploy` user, then deploy a release. The
    host has no binary until you do, on purpose.
 

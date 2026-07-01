@@ -28,14 +28,16 @@ write_files:
       # Provisioning code pin. cloud-init fetches provision.sh and the whole
       # firewall/systemd/IDS perimeter from this repo at this exact commit and
       # verifies it before running it as root, so a poisoned fetch cannot define your
-      # perimeter. PROVISION_REF is a branch or tag NAME (prefer an immutable tag);
-      # PROVISION_SHA is the commit it must resolve to, from
-      # `git rev-parse <ref>^{commit}` (the ^{commit} matters for annotated tags).
-      # With a moving branch the SHA must equal its current tip, so re-provisioning
-      # after the branch advances powers the box off until you bump the SHA. On any
-      # mismatch the box powers itself off instead of provisioning from an unknown tree.
+      # perimeter. PROVISION_REF is a ref NAME and defaults to an immutable release
+      # tag: a tag names one reviewed commit that never moves, so the pin is stable.
+      # A moving branch like main drifts, its tip advancing under the pin, so
+      # re-provisioning would power the box off until you re-review and bump
+      # PROVISION_SHA. PROVISION_SHA is the commit the ref must resolve to, from
+      # `git rev-parse <ref>^{commit}` (the ^{commit} matters for annotated tags). On
+      # any mismatch the box powers itself off instead of provisioning from an unknown
+      # tree.
       PROVISION_REPO="https://github.com/adrianmcphee/sweetty-instance-template.git"
-      PROVISION_REF="main"
+      PROVISION_REF="v0.2.0"
       PROVISION_SHA="REPLACE_WITH_REVIEWED_COMMIT_SHA"
       SWEETTY_REPO="adrianmcphee/sweetty"
       RELEASE_TAG="v0.1.10"
@@ -77,7 +79,7 @@ runcmd:
     . /root/sweetty.instance.env
     : "${PROVISION_SHA:?set PROVISION_SHA in the instance env to the reviewed commit}"
     rm -rf /opt/sweetty-instance-template
-    git clone --depth 1 --branch "${PROVISION_REF:-main}" "${PROVISION_REPO}" /opt/sweetty-instance-template
+    git clone --depth 1 --branch "${PROVISION_REF:-v0.2.0}" "${PROVISION_REPO}" /opt/sweetty-instance-template
     got="$(git -C /opt/sweetty-instance-template rev-parse HEAD)"
     if [ "${got}" != "${PROVISION_SHA}" ]; then
       echo "provision pin mismatch: got ${got}, want ${PROVISION_SHA}; powering off" >&2
