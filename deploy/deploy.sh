@@ -78,15 +78,18 @@ else
 fi
 
 echo "=== Verifying checksum ==="
-# Tolerate either a bare name or a ./-prefixed one in checksums.txt, so the verify
-# works across release builds that differ in that detail.
-if ! grep -E " (\./)?${ASSET}\$" "${WORK}/checksums.txt" >/dev/null; then
+# Select the checksum line by exact filename field, not a regex. A release version
+# like 0.1.10 carries regex-significant dots, so a pattern match could let 0.1.10
+# satisfy an unrelated 0X1X10 entry. Tolerate a bare or ./-prefixed name (release
+# builds differ in that detail), then let sha256sum -c do the real verification.
+SUM_LINE="$(awk -v f="${ASSET}" '$2 == f || $2 == "./" f' "${WORK}/checksums.txt")"
+if [[ -z "${SUM_LINE}" ]]; then
 	echo "no checksum entry for ${ASSET} in checksums.txt" >&2
 	exit 1
 fi
 (
 	cd "${WORK}"
-	grep -E " (\./)?${ASSET}\$" checksums.txt | sha256sum -c -
+	printf '%s\n' "${SUM_LINE}" | sha256sum -c -
 )
 echo "checksum OK"
 

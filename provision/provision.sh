@@ -212,7 +212,9 @@ if ! command -v slotdeploy >/dev/null 2>&1; then
 	sd_tmp="$(mktemp -d)"
 	curl -fsSL "${sd_base}/${sd_asset}" -o "${sd_tmp}/slotdeploy"
 	curl -fsSL "${sd_base}/checksums.txt" -o "${sd_tmp}/checksums.txt"
-	sd_want="$(grep -E " (\./)?${sd_asset}\$" "${sd_tmp}/checksums.txt" | awk '{print $1}')"
+	# Match the checksum line by exact filename field, not a regex: the dots in the
+	# pinned version must not act as wildcards (0.1.0 could otherwise match 0X1X0).
+	sd_want="$(awk -v f="${sd_asset}" '$2 == f || $2 == "./" f {print $1}' "${sd_tmp}/checksums.txt")"
 	sd_got="$(sha256sum "${sd_tmp}/slotdeploy" | awk '{print $1}')"
 	if [[ -z "${sd_want}" || "${sd_want}" != "${sd_got}" ]]; then
 		echo "slotdeploy checksum mismatch (want ${sd_want:-none}, got ${sd_got}); refusing" >&2
