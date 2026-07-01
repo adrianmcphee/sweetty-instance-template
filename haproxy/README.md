@@ -59,8 +59,11 @@ front of it as request throttling:
 
 - **nftables / cloud DDoS.** Connection floods, SYN floods, and amplification are
   a network-layer problem. The host's nftables ruleset (SYN cookies, ICMP rate
-  limits) and your provider's network DDoS protection absorb that without
-  touching the intel the honeypot collects.
+  limits, a gentle per-source new-connection limit on the honeypot ports) and your
+  provider's network DDoS protection absorb that without touching the intel the
+  honeypot collects. In the direct topology that nftables limit is the only
+  per-source flood shedding; in this topology it sits below HAProxy's stick-table
+  as a redundant outer bound.
 - **HAProxy** is here for source-IP preservation and slot routing. Its
   stick-table is a flood circuit-breaker, not an access policy.
 

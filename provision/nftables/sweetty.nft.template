@@ -22,6 +22,23 @@ flush ruleset
 
 table inet sweetty {
 
+	# Per-source new-connection tracking for the honeypot ports. Each element is a
+	# source address carrying its own rate limiter (see the inbound chain), so one
+	# noisy source cannot affect another's budget. Separate v4/v6 sets because a set
+	# key is single-family. Entries expire once a source goes quiet.
+	set flood_src4 {
+		type ipv4_addr
+		size 65535
+		flags dynamic, timeout
+		timeout 1m
+	}
+	set flood_src6 {
+		type ipv6_addr
+		size 65535
+		flags dynamic, timeout
+		timeout 1m
+	}
+
 	chain inbound {
 		type filter hook input priority filter; policy drop;
 
@@ -37,6 +54,20 @@ table inet sweetty {
 			echo-request, nd-neighbor-solicit, nd-neighbor-advert,
 			nd-router-solicit, nd-router-advert
 		} accept
+
+		# Per-source new-connection flood limit. In the direct topology this is the
+		# only per-source shedding on the honeypot ports (nothing fronts them); in
+		# the haproxy topology it is a redundant outer bound below HAProxy's own
+		# stick-table. Deliberately generous at 50 new connections a second per
+		# source (burst 100): a real attacker (scanning, brute forcing) stays far
+		# under it, so only a source opening a torrent of new connections a second is
+		# dropped, and its established sessions (accepted above) are untouched, so a
+		# slow tarpit engagement is never gated. Dropped quietly, because a flood
+		# that logged every packet would only amplify itself; the intel is collected
+		# in the honeypot. The rate is a literal, not a rendered variable, because
+		# nft requires a literal number for a stateful limit threshold.
+		tcp dport $honeypot_ports ct state new update @flood_src4 { ip saddr limit rate over 50/second burst 100 packets } drop
+		tcp dport $honeypot_ports ct state new update @flood_src6 { ip6 saddr limit rate over 50/second burst 100 packets } drop
 
 		# The attack surface. This is the product. Open to everyone.
 		tcp dport $honeypot_ports accept
