@@ -38,6 +38,18 @@ Options, in order of preference:
   `chattr -a`, rotate, recreate, `chattr +a`, and have sweetty reopen the log.
   Script it so the window where the file is mutable is as short as possible.
 
+## Bounded buffers
+
+Neither buffer can be filled without limit by a stall:
+
+- **The local `sweetty.log`** is append-only and never rotated in place, so its
+  growth is bounded by how you size the disk and the retention you choose. Size the
+  disk for the retention you want and ship aggressively.
+- **The forward queue** is disk-assisted with a hard `queue.maxDiskSpace` cap. A
+  collector outage buffers up to that cap and then applies backpressure rather than
+  growing without bound; the append-only log on disk still holds every line, so the
+  shipper catches up from its checkpoint once the collector returns.
+
 ## Firewall coupling
 
 The egress allowlist opens exactly the log port (`LOG_ENDPOINT`'s port) and
