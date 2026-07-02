@@ -3,6 +3,7 @@
   "portal_port": 8888,
   "log_file": "/opt/sweetty/sweetty.log",
   "persona_file": "/opt/sweetty/state/persona.json",
+  "record_dir": "/opt/sweetty/recordings",
   "geoip_file": "/opt/sweetty/geo/country-ipv4.csv",
   "asn_file": "/opt/sweetty/geo/asn-ipv4.csv",
   "bruteforce": { "enabled": true, "after_tries": 4, "after_seconds": 45, "probability": 0.4 },
