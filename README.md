@@ -15,12 +15,16 @@ In short:
 - **This repo** provisions a fresh Ubuntu host and deploys that pinned release into
   a blue/green slot behind a hardened edge.
 
-You keep a private copy of this repo: it carries your operator address and instance
-config and is the source of truth for one box. Provisioning copies that same repo
-onto the host, and the on-host copy is where you run deploys and updates with `make
-deploy TAG=vX.Y.Z`. You never build or run the honeypot from your laptop; the host
-pulls a published release tag, verifies its checksum, and rolls it into the
-inactive slot. Initial setup and the deploy/rollback commands are below.
+This repo has two phases of use: you **provision a host once** from these files,
+then **deploy releases into it** as often as you like. Your per-box secrets (the
+operator address, the admin SSH port, the deploy keys) live in a gitignored
+`sweetty.instance.env` that never enters version control, so nothing box-specific
+belongs in the repo and you work from a plain clone. Provisioning copies these files
+onto the host, without their git history, and that on-host copy is where you run
+deploys and updates with `make deploy TAG=vX.Y.Z`. You never build or run the
+honeypot from your laptop; the host pulls a published release tag, verifies its
+checksum, and rolls it into the inactive slot. Initial setup and the deploy/rollback
+commands are below.
 
 ## Architecture at a glance
 
@@ -55,10 +59,13 @@ flowchart TB
 
 ## Set up a box from scratch
 
-This is a GitHub template repository: click **Use this template**, make a
-**private** copy (it will hold your operator address and instance config), and
-work from that. Automating this with an agent? The exact, deterministic procedure
-is in [`AGENTS.md`](./AGENTS.md); the human walkthrough is below.
+Clone this repo and work from it directly. Your operator address, admin port, and
+keys go in a gitignored `sweetty.instance.env` and are never committed, so a plain
+clone is all you need; there is nothing box-specific to fork. Fork it only if you
+plan to version-control your own changes to the provisioning itself (custom firewall
+rules, extra personas, a different log collector). Automating this with an agent?
+The exact, deterministic procedure is in [`AGENTS.md`](./AGENTS.md); the human
+walkthrough is below.
 
 ### Before you start, you need three things
 
@@ -174,8 +181,10 @@ reach the instance metadata service on boot).
   cd sweetty-instance-template && make status
   ```
 
-For several honeypots, use one private repo per instance, or one repo with a
-branch or directory per instance.
+Running several honeypots? Keep one `sweetty.instance.env` per box (they are
+gitignored, so they never collide) and deploy to each from the same clone. You need
+a separate repo or branch only when a box also needs its own provisioning changes
+tracked.
 
 ## What you get
 
