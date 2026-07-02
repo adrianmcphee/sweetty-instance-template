@@ -21,5 +21,7 @@ jobs:
           sudo apt-get install -y shellcheck nftables haproxy
       - name: Em dash, shellcheck, and HAProxy config
         run: make check-emdash lint haproxy-check
+      - name: Systemd hardening and firewall egress-deny assertions
+        run: make hardening-check egress-check
       - name: nftables ruleset (nft check needs CAP_NET_ADMIN)
         run: sudo make firewall-check

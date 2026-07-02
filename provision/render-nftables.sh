@@ -41,6 +41,12 @@ if [[ ! -f "${INSTANCE_ENV}" ]]; then
 	USING_EXAMPLE=1
 	echo "render-nftables: no sweetty.instance.env, using the example for a syntax check" >&2
 fi
+# An explicitly-passed example env is also example mode, so a check can render it
+# on a machine that happens to have a real env too (the sweetty user won't exist
+# off-host, and example mode uses the nobody uid rather than fail-closing).
+if [[ "${INSTANCE_ENV}" == *sweetty.instance.env.example ]]; then
+	USING_EXAMPLE=1
+fi
 
 # shellcheck disable=SC1090
 source "${INSTANCE_ENV}"

@@ -17,7 +17,7 @@ help: ## Show this help
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: check
-check: check-emdash lint firewall-check haproxy-check ## Run every local gate (CI runs this)
+check: check-emdash lint hardening-check egress-check firewall-check haproxy-check ## Run every local gate (CI runs this)
 
 .PHONY: check-emdash
 check-emdash: ## Fail if an em dash appears in any tracked file
@@ -30,10 +30,18 @@ check-emdash: ## Fail if an em dash appears in any tracked file
 .PHONY: lint
 lint: ## Shellcheck the scripts when shellcheck is installed
 	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck bootstrap.sh provision/provision.sh provision/render-nftables.sh deploy/deploy.sh; \
+		shellcheck bootstrap.sh provision/provision.sh provision/render-nftables.sh deploy/deploy.sh scripts/check-hardening.sh scripts/check-egress.sh; \
 	else \
 		echo "shellcheck not installed; skipping (CI runs it)"; \
 	fi
+
+.PHONY: hardening-check
+hardening-check: ## Assert the systemd units keep their hardening directives
+	@scripts/check-hardening.sh
+
+.PHONY: egress-check
+egress-check: ## Assert the rendered firewall denies the sweetty user's egress
+	@scripts/check-egress.sh
 
 .PHONY: firewall-check
 firewall-check: ## Render and syntax-check the nftables ruleset (needs nft)
