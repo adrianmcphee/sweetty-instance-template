@@ -307,7 +307,7 @@ sweetty-instance-template/
 `SWEETTY_PROFILE` selects the public deception surface. `random` is recommended
 for a fleet: provisioning resolves it once and appends the concrete profile to
 the instance env, so one box stays stable while different boxes do not all look
-the same. `infra` exposes Docker and Redis, `legacy` exposes ADB, and `full`
+the same. `infra` exposes MySQL, Docker, and Redis, `legacy` exposes ADB, and `full`
 exposes every service only when you deliberately want a test or demo sensor.
 
 Real SSH is on a randomized, http-like `ADMIN_SSH_PORT` (8088 and friends, picked

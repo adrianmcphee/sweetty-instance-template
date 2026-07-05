@@ -73,6 +73,7 @@ EOF
 		cat <<'EOF'
 22 ssh -
 80 http nginx-static
+3306 mysql -
 2375 docker -
 6379 redis -
 EOF
@@ -102,6 +103,7 @@ EOF
 80 http wordpress
 443 https -
 2323 telnet ubuntu
+3306 mysql -
 2375 docker -
 5555 adb -
 6379 redis -

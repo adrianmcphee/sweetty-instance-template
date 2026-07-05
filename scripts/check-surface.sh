@@ -26,30 +26,30 @@ has_port() {
 
 assert_ports_policy() {
 	local profile="$1" ports="$2" count=0
-	for p in 2375 5555 6379; do
+	for p in 2375 3306 5555 6379; do
 		if has_port "${ports}" "${p}"; then
 			count=$((count + 1))
 		fi
 	done
 	if [[ "${profile}" == "full" ]]; then
-		[[ "${count}" -eq 3 ]] || {
-			echo "surface ${profile}: full must expose Docker, ADB, and Redis" >&2
+		[[ "${count}" -eq 4 ]] || {
+			echo "surface ${profile}: full must expose Docker, MySQL, ADB, and Redis" >&2
 			return 1
 		}
-	elif [[ "${count}" -eq 3 ]]; then
+	elif [[ "${count}" -eq 4 ]]; then
 		echo "surface ${profile}: only full may expose every new service" >&2
 		return 1
 	fi
 	case "${profile}" in
 		infra)
-			if ! { has_port "${ports}" 2375 && has_port "${ports}" 6379 && ! has_port "${ports}" 5555; }; then
-				echo "surface infra: want Docker and Redis, not ADB" >&2
+			if ! { has_port "${ports}" 2375 && has_port "${ports}" 3306 && has_port "${ports}" 6379 && ! has_port "${ports}" 5555; }; then
+				echo "surface infra: want Docker, MySQL, and Redis, not ADB" >&2
 				return 1
 			fi
 			;;
 		legacy)
-			if ! { has_port "${ports}" 5555 && ! has_port "${ports}" 2375 && ! has_port "${ports}" 6379; }; then
-				echo "surface legacy: want ADB, not Docker or Redis" >&2
+			if ! { has_port "${ports}" 5555 && ! has_port "${ports}" 2375 && ! has_port "${ports}" 3306 && ! has_port "${ports}" 6379; }; then
+				echo "surface legacy: want ADB, not Docker, MySQL, or Redis" >&2
 				return 1
 			fi
 			;;
@@ -72,7 +72,7 @@ if got != expected:
     raise SystemExit(f"{label}: listener ports {got} != expected {expected}")
 if len(got) != len(set(got)):
     raise SystemExit(f"{label}: duplicate listener ports {got}")
-valid = {"ftp", "ssh", "telnet", "http", "https", "adb", "redis", "docker"}
+valid = {"ftp", "ssh", "telnet", "http", "https", "adb", "mysql", "redis", "docker"}
 bad = [x.get("protocol") for x in listeners if x.get("protocol") not in valid]
 if bad:
     raise SystemExit(f"{label}: invalid protocols {bad}")
