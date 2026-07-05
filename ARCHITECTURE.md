@@ -14,7 +14,7 @@ flowchart TB
     subgraph HOST["Honeypot host (assume it will be lost)"]
         direction TB
         FW{{"nftables<br/>egress denied by default<br/>only admin SSH open to operator"}}
-        HP["Honeypot ports<br/>21 22 23 80 443 2323 8080"]
+        HP["Honeypot ports<br/>selected by SWEETTY_PROFILE"]
         SSHD["Real sshd<br/>randomized http-like port<br/>e.g. 8088, operator-only"]
         SW["sweetty binary<br/>unprivileged user"]
         PORTAL["Portal<br/>127.0.0.1 only"]
@@ -33,7 +33,7 @@ The operator never opens a management port. They `ssh -L <local>:127.0.0.1:<port
 
 ## HAProxy edge (the default)
 
-HAProxy is the default edge (`TOPOLOGY=haproxy`; set `direct` to have sweetty bind the public ports itself). It fronts only the honeypot ports, to preserve the real attacker source IP (PROXY protocol), shed obvious floods with gentle per-source limits (turned into `FLOOD_BLOCKED` events by `sweetty-hapwatch`), and route blue/green deploys. It does not front the portal, which stays loopback and SSH-tunnel-only. Its stats console is reached through the portal over that same tunnel. It is started after sshd has moved off port 22, so its bind on :22 succeeds.
+HAProxy is the default edge (`TOPOLOGY=haproxy`; set `direct` to have sweetty bind the public ports itself). It fronts only the profile-selected honeypot ports, to preserve the real attacker source IP (PROXY protocol), shed obvious floods with gentle per-source limits (turned into `FLOOD_BLOCKED` events by `sweetty-hapwatch`), and route blue/green deploys. It does not front the portal, which stays loopback and SSH-tunnel-only. Its stats console is reached through the portal over that same tunnel. It is started after sshd has moved off port 22, so its bind on :22 succeeds.
 
 ```mermaid
 flowchart LR

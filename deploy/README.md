@@ -21,7 +21,8 @@ deploy/deploy.sh v0.3.0
    slot (`/opt/sweetty/sweetty-blue` or `-green`) and the low-port capability is
    re-granted.
 5. **Swap.** slotdeploy starts the new slot, health-checks it on the HTTP
-   honeypot port, stops the old slot, and flips `/opt/sweetty/.active-slot`.
+   honeypot port that every `SWEETTY_PROFILE` includes, stops the old slot, and
+   flips `/opt/sweetty/.active-slot`.
 
 ## Why slotdeploy, and the cutover trade
 

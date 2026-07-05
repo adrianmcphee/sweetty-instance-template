@@ -31,11 +31,12 @@ intelligence; losing it to a proxy hop would quietly gut the product.
 
 This has a hard requirement on the other side: **sweetty must have
 `"proxy_protocol": true`** in its config and be bound to the loopback backend
-ports (see `config.haproxy.json`). If HAProxy sends the header and sweetty is not
-parsing it, sweetty will treat the header bytes as the attacker's first input and
-every session will be malformed, and the logged source will be HAProxy's loopback
-address instead of the attacker. The two settings are a matched pair: `send-proxy`
-here and `proxy_protocol` there.
+ports. `provision/render-surface.sh` renders that SweeTTY config and this HAProxy
+edge from the same `SWEETTY_PROFILE`. If HAProxy sends the header and sweetty is
+not parsing it, sweetty will treat the header bytes as the attacker's first input
+and every session will be malformed, and the logged source will be HAProxy's
+loopback address instead of the attacker. The two settings are a matched pair:
+`send-proxy` here and `proxy_protocol` there.
 
 ### 2. Gentle rate limiting only
 
@@ -74,14 +75,15 @@ it installs HAProxy, validates and installs `haproxy.cfg`, starts the edge, and
 enables the `sweetty-hapwatch` unit that logs `FLOOD_BLOCKED` events. The steps it
 performs, for reference:
 
-1. Point sweetty at `config.haproxy.json` (loopback backend ports, loopback
-   portal on 8888); it already sets `"proxy_protocol": true`. The portal binds
+1. Render SweeTTY's config from `SWEETTY_PROFILE` with loopback backend ports,
+   loopback portal on 8888, and `"proxy_protocol": true`. The portal binds
    loopback and is reached over the SSH tunnel, the same as the direct topology.
-2. Install `haproxy.cfg`, validate it with `haproxy -c -f haproxy.cfg`, and start
-   HAProxy.
-3. The nftables ruleset is unchanged: the public ports stay open to the world and
-   only the management SSH port is restricted to the operator. HAProxy is now the
-   listener on the public honeypot ports; sweetty listens only on loopback.
+2. Render the matching HAProxy frontends/backends from the same profile, validate
+   them with `haproxy -c`, and start HAProxy.
+3. Render the nftables public honeypot port set from the same profile. The public
+   ports stay open to the world and only the management SSH port is restricted to
+   the operator. HAProxy is now the listener on the public honeypot ports; sweetty
+   listens only on loopback.
 
 ## The stats console, through the portal
 
@@ -91,7 +93,7 @@ portal reverse-proxies it at `/dashboard/console/haproxy/`, so an operator opens
 it from the dashboard over the same SSH tunnel that reaches the portal. There is
 no separate credential and no second public port: SSH key auth is the one gate.
 
-This is wired by `admin_consoles` in `config.haproxy.json`:
+This is wired by the rendered `admin_consoles` entry in SweeTTY's config:
 
 ```json
 "admin_consoles": [

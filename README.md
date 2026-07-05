@@ -40,7 +40,7 @@ flowchart TB
 
     subgraph HOST["Hardened Ubuntu host (assume it will be lost)"]
         direction TB
-        EDGE["HAProxy edge<br/>public ports 21 22 23 80 443 2323 8080<br/>per-source flood limits + PROXY protocol"]
+        EDGE["HAProxy edge<br/>profile-selected public ports<br/>per-source flood limits + PROXY protocol"]
         SW["sweetty, blue/green slots<br/>unprivileged, loopback backends<br/>personas, VFS, brute-force, WordPress trap"]
         SSHD["Admin SSH<br/>randomized port, operator-only"]
         PORTAL["Management console<br/>127.0.0.1:8888"]
@@ -89,10 +89,11 @@ create the VM and never SSH in to set it up.
 1. Copy `sweetty.instance.env.example` to `sweetty.instance.env` and fill in
    `OPERATOR_IP` and `RELEASE_TAG` (a published
    [sweetty release](https://github.com/adrianmcphee/sweetty/releases), e.g.
-   `v0.1.6`). Leave `TOPOLOGY="haproxy"`, and leave `ADMIN_SSH_PORT` **empty** so
+   `v0.1.6`). Leave `SWEETTY_PROFILE="random"` for a per-instance service
+   surface, leave `TOPOLOGY="haproxy"`, and leave `ADMIN_SSH_PORT` **empty** so
    real SSH lands on a per-instance random port (no fleet-wide tell). The chosen
-   port and the exact login + tunnel commands are written to
-   `/root/sweetty-access.txt`, which you read from the provider's serial console.
+   profile, chosen port, and exact login + tunnel commands are written back during
+   provisioning.
 2. Edit `cloud-init/user-data.yaml`: copy those env values into its
    `sweetty.instance.env` block, paste your deploy **public** key into the
    `deploy.pub` block, and leave `PROVISION_REF` at the default release tag (or pin
@@ -141,7 +142,10 @@ provisioning is sound:
 ssh -p ADMIN_SSH_PORT deploy@HOST 'sudo systemctl reboot'
 sleep 60
 ssh -p ADMIN_SSH_PORT deploy@HOST \
-  'systemctl is-active sweetty-green.service nftables; ss -tln | grep -cE ":(21|22|23|80|443|2323|8080) "'
+  'cd sweetty-instance-template && \
+   set -a; . ./sweetty.instance.env; set +a; \
+   systemctl is-active "sweetty-$(cat /opt/sweetty/.active-slot)".service nftables haproxy; \
+   for p in $(provision/render-surface.sh ports); do ss -tln | grep -q ":$p " && echo "$p ok" || echo "$p MISSING"; done'
 ```
 
 Expect the honeypot slot active, `nftables` active, and the honeypot ports bound.
@@ -192,6 +196,8 @@ tracked.
   (and an optional Terraform example) that create the unprivileged `sweetty`
   user, lay out `/opt/sweetty`, install the systemd slot units, and harden the
   box.
+- A profile-aware service surface renderer. One `SWEETTY_PROFILE` value drives
+  SweeTTY listeners, HAProxy frontends/backends, nftables ports, and verification.
 - An nftables firewall that opens the attack surface to the world, restricts
   management to one operator address, and denies the honeypot any egress.
 - Intrusion-detection tripwires (auditd, optional osquery) tuned to alarm only on
@@ -241,7 +247,7 @@ sweetty-instance-template/
 │   └── user-data.yaml             First-boot provisioning
 ├── provision/
 │   ├── provision.sh               Idempotent host bootstrap
-│   ├── config.json                sweetty config (direct topology)
+│   ├── render-surface.sh          Renders profile-selected config and HAProxy
 │   ├── render-nftables.sh         Renders the firewall from the instance env
 │   ├── nftables/sweetty.nft.template
 │   ├── systemd/                   sweetty-blue.service, sweetty-green.service
@@ -256,8 +262,6 @@ sweetty-instance-template/
 │   ├── vector.toml                Off-host shipping (JSON-native alternative)
 │   └── README.md                  Append-only rotation caveat
 ├── haproxy/
-│   ├── haproxy.cfg                Optional TCP edge
-│   ├── config.haproxy.json        sweetty config for the HAProxy topology
 │   └── README.md                  PROXY protocol, gentle limits, the decision
 ├── deploy/
 │   ├── deploy.sh                  Pinned, verified, blue/green deploy
@@ -271,9 +275,10 @@ sweetty-instance-template/
 1. Create an isolated Ubuntu host, on its own segment, that exists only to be
    attacked. Nothing real should live near it.
 2. Copy `sweetty.instance.env.example` to `sweetty.instance.env` and fill it in:
-   the operator address, the admin SSH port, the release tag to run, the DNS
-   resolvers, and the log endpoint. This file is the single source of truth and
-   is gitignored. Set `OPERATOR_IP` to the address you actually connect from:
+   the operator address, the admin SSH port, the release tag to run, the service
+   profile, the DNS resolvers, and the log endpoint. This file is the single
+   source of truth and is gitignored. Set `OPERATOR_IP` to the address you
+   actually connect from:
    admin SSH is firewalled to it alone, so a wrong value locks you out and the box
    has to be rebuilt. The renderer refuses an all-internet wildcard, so you cannot
    accidentally open management to the world.
@@ -298,6 +303,12 @@ sweetty-instance-template/
    itself off instead of provisioning from an unknown tree.
 4. Add the deploy public key to the `deploy` user, then deploy a release. The
    host has no binary until you do, on purpose.
+
+`SWEETTY_PROFILE` selects the public deception surface. `random` is recommended
+for a fleet: provisioning resolves it once and appends the concrete profile to
+the instance env, so one box stays stable while different boxes do not all look
+the same. `infra` exposes Docker and Redis, `legacy` exposes ADB, and `full`
+exposes every service only when you deliberately want a test or demo sensor.
 
 Real SSH is on a randomized, http-like `ADMIN_SSH_PORT` (8088 and friends, picked
 per instance so it blends in as a web service with no fixed admin-port tell) and
@@ -329,8 +340,8 @@ Two rules are non-negotiable, and `haproxy/README.md` covers both in full:
 
 - **PROXY protocol to the backend.** sweetty must keep logging the real attacker
   IP, so HAProxy sends the PROXY header and sweetty runs with PROXY-protocol
-  parsing enabled (`config.haproxy.json` sets this). The two settings are a
-  matched pair.
+  parsing enabled. `provision/render-surface.sh` renders both sides from the same
+  `SWEETTY_PROFILE`, so the two settings stay a matched pair.
 - **Gentle rate limiting only.** The stick-table limits shed obvious floods and
   nothing more. Heavy upstream rate limiting is wrong for a honeypot: it throws
   away the very intelligence the honeypot exists to collect, because a scanner that

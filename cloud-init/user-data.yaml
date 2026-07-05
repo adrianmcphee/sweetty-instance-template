@@ -57,6 +57,7 @@ write_files:
       DNS_RESOLVERS="1.1.1.1,9.9.9.9"
       LOG_ENDPOINT="logs.example.com:6514"
       LOG_TRANSPORT="tls"
+      SWEETTY_PROFILE="random"
       TOPOLOGY="haproxy"
 
   # The deploy public key the CI deploy uses. Replace with your own.

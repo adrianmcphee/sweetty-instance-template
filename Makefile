@@ -17,7 +17,7 @@ help: ## Show this help
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: check
-check: check-emdash lint hardening-check egress-check firewall-check haproxy-check ## Run every local gate (CI runs this)
+check: check-emdash lint hardening-check egress-check surface-check firewall-check haproxy-check ## Run every local gate (CI runs this)
 
 .PHONY: check-emdash
 check-emdash: ## Fail if an em dash appears in any tracked file
@@ -30,7 +30,7 @@ check-emdash: ## Fail if an em dash appears in any tracked file
 .PHONY: lint
 lint: ## Shellcheck the scripts when shellcheck is installed
 	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck bootstrap.sh provision/provision.sh provision/render-nftables.sh deploy/deploy.sh scripts/check-hardening.sh scripts/check-egress.sh; \
+		shellcheck bootstrap.sh provision/provision.sh provision/render-nftables.sh provision/render-surface.sh deploy/deploy.sh scripts/check-hardening.sh scripts/check-egress.sh scripts/check-surface.sh; \
 	else \
 		echo "shellcheck not installed; skipping (CI runs it)"; \
 	fi
@@ -43,10 +43,17 @@ hardening-check: ## Assert the systemd units keep their hardening directives
 egress-check: ## Assert the rendered firewall denies the sweetty user's egress
 	@scripts/check-egress.sh
 
+.PHONY: surface-check
+surface-check: ## Assert every service profile renders coherently
+	@scripts/check-surface.sh
+
 .PHONY: firewall-check
 firewall-check: ## Render and syntax-check the nftables ruleset (needs nft)
 	@if command -v nft >/dev/null 2>&1; then \
-		provision/render-nftables.sh && nft -c -f /tmp/sweetty.nft.rendered && echo "nftables ruleset is valid"; \
+		for profile in web edge infra legacy ftp full; do \
+			SWEETTY_PROFILE=$$profile provision/render-nftables.sh && nft -c -f /tmp/sweetty.nft.rendered || exit 1; \
+		done; \
+		echo "nftables rulesets are valid"; \
 	else \
 		echo "nft not installed; skipping (run on the host or in CI)"; \
 	fi
@@ -54,7 +61,12 @@ firewall-check: ## Render and syntax-check the nftables ruleset (needs nft)
 .PHONY: haproxy-check
 haproxy-check: ## Syntax-check the optional HAProxy config (needs haproxy)
 	@if command -v haproxy >/dev/null 2>&1; then \
-		haproxy -c -f haproxy/haproxy.cfg && echo "haproxy config is valid"; \
+		tmp=$$(mktemp); trap 'rm -f "$$tmp"' EXIT; \
+		for profile in web edge infra legacy ftp full; do \
+			SWEETTY_PROFILE=$$profile TOPOLOGY=haproxy provision/render-surface.sh haproxy > "$$tmp"; \
+			haproxy -c -f "$$tmp" || exit 1; \
+		done; \
+		echo "haproxy configs are valid"; \
 	else \
 		echo "haproxy not installed; skipping (run on the host or in CI)"; \
 	fi

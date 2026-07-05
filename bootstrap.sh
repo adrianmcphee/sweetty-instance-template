@@ -35,6 +35,10 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/sweetty}"
 
 echo "### bootstrap: provision ###"
 INSTANCE_ENV="${INSTANCE_ENV}" "${REPO_ROOT}/provision/provision.sh"
+# provision.sh may resolve ADMIN_SSH_PORT and SWEETTY_PROFILE=random into concrete
+# values and append them to the instance env. Reload before copying or verifying.
+# shellcheck disable=SC1090
+source "${INSTANCE_ENV}"
 
 echo "### bootstrap: deploy key ###"
 DEPLOY_PUBKEY="${DEPLOY_PUBKEY:-/root/deploy.pub}"
@@ -63,6 +67,7 @@ runuser -u "${DEPLOY_USER}" -- env INSTANCE_ENV="${DEPLOY_CHECKOUT}/sweetty.inst
 
 echo "### bootstrap: verify ###"
 active="$(cat "${INSTALL_DIR}/.active-slot" 2>/dev/null || echo blue)"
+verify_ports="$(SWEETTY_PROFILE="${SWEETTY_PROFILE:-web}" TOPOLOGY="${TOPOLOGY:-haproxy}" "${REPO_ROOT}/provision/render-surface.sh" ports)"
 rc=0
 if systemctl is-active "sweetty-${active}.service" >/dev/null 2>&1; then
 	echo "  slot ${active}: active"
@@ -77,7 +82,7 @@ else
 	echo "  http 127.0.0.1:80 -> ${code} (want 200)" >&2
 	rc=1
 fi
-for p in 21 22 23 80 443 2323 8080; do
+for p in ${verify_ports}; do
 	if ss -tln 2>/dev/null | grep -q ":${p} "; then
 		echo "  port ${p}: bound"
 	else

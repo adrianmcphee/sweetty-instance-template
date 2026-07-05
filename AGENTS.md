@@ -59,13 +59,14 @@ substitute your own egress IP.
 
 ### 3. Stage the repo, env, and key
 Render `sweetty.instance.env` from the example: set `OPERATOR_IP` and `RELEASE_TAG`,
+leave `SWEETTY_PROFILE="random"` unless the operator wants a specific surface,
 leave `ADMIN_SSH_PORT=""` to randomize the real-SSH port, keep `TOPOLOGY="haproxy"`.
 Then:
 ```bash
 rsync -a --exclude='.git' ./ root@HOST:/root/sweetty-instance-template/
 scp sweetty.instance.env root@HOST:/root/sweetty-instance-template/sweetty.instance.env
 scp deploy.pub          root@HOST:/root/deploy.pub
-ssh root@HOST 'grep -E "^(OPERATOR_IP|RELEASE_TAG|ADMIN_SSH_PORT|TOPOLOGY)=" /root/sweetty-instance-template/sweetty.instance.env'
+ssh root@HOST 'grep -E "^(OPERATOR_IP|RELEASE_TAG|SWEETTY_PROFILE|ADMIN_SSH_PORT|TOPOLOGY)=" /root/sweetty-instance-template/sweetty.instance.env'
 ```
 
 ### 4. Bootstrap (provision + deploy key + first release + verify)
@@ -95,8 +96,10 @@ clean boot the moment HAProxy binds the public ports (port 22 is free from boot)
 ```bash
 ssh -p "$PORT" deploy@HOST 'sudo systemctl reboot'; sleep 75
 ssh -p "$PORT" deploy@HOST \
-  'systemctl is-active "sweetty-$(cat /opt/sweetty/.active-slot)".service nftables haproxy; \
-   for p in 21 22 23 80 443 2323 8080; do ss -tln | grep -q ":$p " && echo "$p ok" || echo "$p MISSING"; done; \
+  'cd sweetty-instance-template && \
+   set -a; . ./sweetty.instance.env; set +a; \
+   systemctl is-active "sweetty-$(cat /opt/sweetty/.active-slot)".service nftables haproxy; \
+   for p in $(provision/render-surface.sh ports); do ss -tln | grep -q ":$p " && echo "$p ok" || echo "$p MISSING"; done; \
    curl -s -o /dev/null -w "http %{http_code}\n" http://127.0.0.1:80/'
 ```
 Expect the slot, `nftables`, and `haproxy` all active; every honeypot port bound

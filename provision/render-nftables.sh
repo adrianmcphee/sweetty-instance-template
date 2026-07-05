@@ -28,6 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TEMPLATE="${SCRIPT_DIR}/nftables/sweetty.nft.template"
 OUTPUT="${OUTPUT:-/tmp/sweetty.nft.rendered}"
+SURFACE="${SCRIPT_DIR}/render-surface.sh"
 
 fatal() { echo "render-nftables: FATAL: $*" >&2; exit 1; }
 resolve_uid() { id -u "$1" 2>/dev/null || true; }
@@ -36,6 +37,8 @@ resolve_uid() { id -u "$1" 2>/dev/null || true; }
 # may fall back to placeholder values that never reach a live firewall.
 USING_EXAMPLE=0
 INSTANCE_ENV="${INSTANCE_ENV:-${REPO_ROOT}/sweetty.instance.env}"
+SWEETTY_PROFILE_OVERRIDE="${SWEETTY_PROFILE:-}"
+TOPOLOGY_OVERRIDE="${TOPOLOGY:-}"
 if [[ ! -f "${INSTANCE_ENV}" ]]; then
 	INSTANCE_ENV="${REPO_ROOT}/sweetty.instance.env.example"
 	USING_EXAMPLE=1
@@ -50,6 +53,8 @@ fi
 
 # shellcheck disable=SC1090
 source "${INSTANCE_ENV}"
+[[ -n "${SWEETTY_PROFILE_OVERRIDE}" ]] && SWEETTY_PROFILE="${SWEETTY_PROFILE_OVERRIDE}"
+[[ -n "${TOPOLOGY_OVERRIDE}" ]] && TOPOLOGY="${TOPOLOGY_OVERRIDE}"
 
 # The honeypot user's uid anchors the egress-DENY rule. If it cannot be resolved to
 # a real, non-root uid the drop would match nothing, and the host's narrow egress
@@ -121,13 +126,16 @@ if [[ ! "${log_port}" =~ ^[0-9]+$ ]] || ((log_port < 1 || log_port > 65535)); th
 	fatal "log port '${log_port}' from LOG_ENDPOINT is not a valid 1-65535 port"
 fi
 
+honeypot_ports="$(TOPOLOGY="${TOPOLOGY:-haproxy}" SWEETTY_PROFILE="${SWEETTY_PROFILE:-web}" "${SURFACE}" ports-csv)"
+[[ -n "${honeypot_ports}" ]] || fatal "SWEETTY_PROFILE rendered no honeypot ports"
+
 mkdir -p "$(dirname "${OUTPUT}")"
 {
 	echo "# Rendered from ${INSTANCE_ENV} by render-nftables.sh. Do not edit."
 	echo "define operator_ip = ${operator_ip}"
 	echo "define operator_ip6 = ${operator_ip6}"
 	echo "define admin_ssh_port = ${ADMIN_SSH_PORT:-8088}"
-	echo "define honeypot_ports = { 21, 22, 23, 80, 443, 2323, 8080 }"
+	echo "define honeypot_ports = { ${honeypot_ports} }"
 	echo "define dns_resolvers = { ${dns_set} }"
 	echo "define log_port = ${log_port}"
 	echo "define sweetty_uid = ${sweetty_uid}"

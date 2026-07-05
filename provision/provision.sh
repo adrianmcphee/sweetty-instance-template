@@ -51,14 +51,23 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/sweetty}"
 if [[ -z "${ADMIN_SSH_PORT:-}" ]]; then
 	# Plausible web/app ports, widened for real per-instance variation so the fleet
 	# has no shared admin-port tell, yet each still looks like an ordinary service.
-	# Curated to avoid every port already in use on the box: the honeypot listeners
-	# (21 22 23 80 443 2323 8080), the loopback HAProxy backends (100xx 12323 18080
-	# 19000), and the portal (8888, which the tunnel forwards to).
+	# Curated to avoid the common honeypot listeners, loopback HAProxy backends, the
+	# HAProxy stats console, and the portal.
 	admin_port_pool=(8000 8001 8008 8081 8082 8083 8085 8090 8091 8181 8200 8443 8800 8880 9000 9001 9080 9090 9100 9443)
 	ADMIN_SSH_PORT="${admin_port_pool[RANDOM % ${#admin_port_pool[@]}]}"
 	printf '\n# Randomized by provision.sh on first run.\nADMIN_SSH_PORT="%s"\n' "${ADMIN_SSH_PORT}" >> "${INSTANCE_ENV}"
 	echo "generated a random management SSH port: ${ADMIN_SSH_PORT} (recorded in ${INSTANCE_ENV})"
 fi
+
+SWEETTY_PROFILE="${SWEETTY_PROFILE:-random}"
+if [[ -z "${SWEETTY_PROFILE}" || "${SWEETTY_PROFILE}" == "random" ]]; then
+	SWEETTY_PROFILE="$("${SCRIPT_DIR}/render-surface.sh" pick-profile)"
+	printf '\n# Randomized by provision.sh on first run.\nSWEETTY_PROFILE="%s"\n' "${SWEETTY_PROFILE}" >> "${INSTANCE_ENV}"
+	echo "generated a random SweeTTY service profile: ${SWEETTY_PROFILE} (recorded in ${INSTANCE_ENV})"
+else
+	SWEETTY_PROFILE="${SWEETTY_PROFILE}" "${SCRIPT_DIR}/render-surface.sh" validate-profile >/dev/null
+fi
+export SWEETTY_PROFILE
 
 log() { printf '\n=== %s ===\n' "$1"; }
 
@@ -121,14 +130,13 @@ install -d -m 0750 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" "${INSTALL_DIR}/deplo
 # The config is operator-owned; never clobber an existing one, only seed it the
 # first time.
 if [[ ! -f "${INSTALL_DIR}/config.json" ]]; then
-	# TOPOLOGY selects the seed: the direct config binds the public ports, the
-	# haproxy config binds loopback backend ports for the HAProxy edge to front.
-	CONFIG_SRC="${SCRIPT_DIR}/config.json"
-	if [[ "${TOPOLOGY:-haproxy}" == "haproxy" ]]; then
-		CONFIG_SRC="${REPO_ROOT}/haproxy/config.haproxy.json"
-	fi
-	install -m 0640 -o root -g "${SWEETTY_USER}" "${CONFIG_SRC}" "${INSTALL_DIR}/config.json"
-	echo "seeded config.json from ${CONFIG_SRC##*/} (portal binds loopback, no login; reach it over the SSH tunnel)"
+	config_tmp="$(mktemp)"
+	TOPOLOGY="${TOPOLOGY:-haproxy}" SWEETTY_PROFILE="${SWEETTY_PROFILE}" PORTAL_PORT="${PORTAL_PORT:-8888}" \
+		"${SCRIPT_DIR}/render-surface.sh" config > "${config_tmp}"
+	jq empty "${config_tmp}"
+	install -m 0640 -o root -g "${SWEETTY_USER}" "${config_tmp}" "${INSTALL_DIR}/config.json"
+	rm -f "${config_tmp}"
+	echo "seeded config.json from SWEETTY_PROFILE=${SWEETTY_PROFILE} (portal binds loopback, no login; reach it over the SSH tunnel)"
 fi
 
 # Active-slot marker, owned by the deploy user so slotdeploy can rewrite it
@@ -238,7 +246,10 @@ fi
 log "HAProxy edge"
 if [[ "${TOPOLOGY:-haproxy}" == "haproxy" ]]; then
 	install -d -m 0755 /etc/haproxy
-	install -m 0644 "${REPO_ROOT}/haproxy/haproxy.cfg" /etc/haproxy/haproxy.cfg
+	haproxy_tmp="$(mktemp)"
+	TOPOLOGY=haproxy SWEETTY_PROFILE="${SWEETTY_PROFILE}" "${SCRIPT_DIR}/render-surface.sh" haproxy > "${haproxy_tmp}"
+	install -m 0644 "${haproxy_tmp}" /etc/haproxy/haproxy.cfg
+	rm -f "${haproxy_tmp}"
 	# The runtime admin socket lives in /run/haproxy; the package ships a tmpfiles
 	# rule for it, but create it now so a fresh provision does not race the unit.
 	install -d -m 0750 -o haproxy -g haproxy /run/haproxy 2>/dev/null || true
