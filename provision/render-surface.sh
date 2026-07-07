@@ -223,7 +223,9 @@ emit_config() {
 		local sep="" public protocol persona backend rate cur
 		while IFS=$'\t' read -r public protocol persona backend rate cur; do
 			printf '%s' "${sep}"
-			printf '    { "port": %s, "protocol": "%s"' "${backend}" "${protocol}"
+			# public_port is the port the world reaches; under haproxy it differs from the
+			# loopback backend the process binds, so the console can show the real surface.
+			printf '    { "port": %s, "protocol": "%s", "public_port": %s' "${backend}" "${protocol}" "${public}"
 			if [[ "${persona}" != "-" ]]; then
 				printf ', "persona": "%s"' "${persona}"
 			fi
