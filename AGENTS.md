@@ -61,11 +61,22 @@ substitute your own egress IP.
 Render `sweetty.instance.env` from the example: set `OPERATOR_IP` and `RELEASE_TAG`,
 leave `SWEETTY_PROFILE="random"` unless the operator wants a specific surface,
 leave `ADMIN_SSH_PORT=""` to randomize the real-SSH port, keep `TOPOLOGY="haproxy"`.
-Then:
+
+For the deploy key, default to the operator's OWN existing public key as
+`deploy.pub`. Do not assume its filename: `ls ~/.ssh/*.pub` and confirm which key
+they use (it may be `id_ed25519.pub`, `id_rsa.pub`, `id_ecdsa.pub`, or anything
+else). Using their own key means they log in with `ssh -p PORT deploy@HOST`, no
+`-i` and no ssh-config. Do NOT generate a fresh dedicated keypair unless the
+operator explicitly asks: the box authorizes only the one public key you install
+and password auth is off, so a dedicated key forces `-i <that private key>` onto
+every login and tunnel command, which is exactly the lockout-looking confusion to
+avoid. If a dedicated key is genuinely wanted, record its private-key path now and
+use the `-i` form in the hand-off (step 7). Then (substitute the operator's actual
+public-key filename):
 ```bash
 rsync -a --exclude='.git' ./ root@HOST:/root/sweetty-instance-template/
 scp sweetty.instance.env root@HOST:/root/sweetty-instance-template/sweetty.instance.env
-scp deploy.pub          root@HOST:/root/deploy.pub
+scp ~/.ssh/<operator-key>.pub root@HOST:/root/deploy.pub   # the operator's own key by default
 ssh root@HOST 'grep -E "^(OPERATOR_IP|RELEASE_TAG|SWEETTY_PROFILE|ADMIN_SSH_PORT|TOPOLOGY)=" /root/sweetty-instance-template/sweetty.instance.env'
 ```
 
@@ -113,6 +124,9 @@ a provisioning defect, not a one-off.
 Give the operator the block from `/root/sweetty-access.txt`: the admin port, the
 `ssh -p PORT deploy@HOST` login, and the
 `ssh -fN -L 8888:127.0.0.1:8888 deploy@HOST -p PORT` tunnel to `http://localhost:8888`.
+If (and only if) you installed a dedicated key instead of the operator's own,
+prefix both commands with `-i <private key>` so they work as printed; the bare
+form authenticates only when the deploy key is the operator's default ssh key.
 
 ---
 

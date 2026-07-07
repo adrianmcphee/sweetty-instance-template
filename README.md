@@ -75,9 +75,16 @@ walkthrough is below.
   `curl ifconfig.me` shows). This becomes `OPERATOR_IP`, the only address allowed
   to reach management. It is the address you connect **from**, never the server's
   own IP. A wrong value locks you out and the box has to be rebuilt.
-- A **deploy SSH keypair**. You keep the private key; its public key goes on the
-  box for the `deploy` user, which is the only login that exists after
-  provisioning.
+- A **deploy SSH key**. The simplest choice is your everyday key: install its
+  public key as the deploy key and `ssh -p PORT deploy@HOST` then works with
+  nothing extra. Whatever it is named (`id_ed25519.pub`, `id_rsa.pub`,
+  `id_ecdsa.pub`, ...), `ls ~/.ssh/*.pub` shows your public keys; pick the one
+  whose private key you actually use. If you use a separate, dedicated key instead,
+  dedicated key instead, every login and tunnel command below needs
+  `-i <that private key>` (or an ssh-config `IdentityFile`), because the box
+  authorizes only the one public key you install and password auth is off, so your
+  other keys are refused. You keep the private key; only the public key goes on the
+  box, for the `deploy` user, the sole login provisioning creates.
 
 Then pick one path. Both end at the same hardened, running honeypot.
 
@@ -89,7 +96,7 @@ create the VM and never SSH in to set it up.
 1. Copy `sweetty.instance.env.example` to `sweetty.instance.env` and fill in
    `OPERATOR_IP` and `RELEASE_TAG` (a published
    [sweetty release](https://github.com/adrianmcphee/sweetty/releases), e.g.
-   `v0.1.6`). Leave `SWEETTY_PROFILE="random"` for a per-instance service
+   `v0.3.21`). Leave `SWEETTY_PROFILE="random"` for a per-instance service
    surface, leave `TOPOLOGY="haproxy"`, and leave `ADMIN_SSH_PORT` **empty** so
    real SSH lands on a per-instance random port (no fleet-wide tell). The chosen
    profile, chosen port, and exact login + tunnel commands are written back during
@@ -313,6 +320,15 @@ the instance env, so one box stays stable while different boxes do not all look
 the same. `infra` exposes MySQL, Docker, and Redis, `legacy` exposes ADB, and `full`
 exposes every service only when you deliberately want a test or demo sensor.
 
+A profile only serves what the pinned `RELEASE_TAG` binary implements. mysql,
+docker, redis, and adb landed after `v0.3.20`; pinning an older release with a
+profile that names them (`infra`, `legacy`, `full`, or a `random` that resolves to
+`infra`/`legacy`) stands those ports up behind the edge with a dead backend that
+accepts connections, serves nothing, and logs nothing. Pin a release that
+implements every service your profile lists. The reboot-verify probes the loopback
+backends, so a mismatch surfaces as a `MISSING` backend instead of a silent
+open port.
+
 Real SSH is on a randomized, http-like `ADMIN_SSH_PORT` (8088 and friends, picked
 per instance so it blends in as a web service with no fixed admin-port tell) and
 reachable only from the operator address. Port 22 is the honeypot. If you
@@ -365,7 +381,7 @@ on the host as the `deploy` user (it uses the narrow sudo grants provisioning se
 up), or from CI holding the deploy key.
 
 ```bash
-deploy/deploy.sh v0.3.0
+deploy/deploy.sh v0.3.21
 ```
 
 This pulls `sweetty_<ver>_linux_<arch>.tar.gz` and `checksums.txt` from the
