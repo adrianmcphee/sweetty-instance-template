@@ -145,10 +145,13 @@ ssh -p ADMIN_SSH_PORT deploy@HOST \
   'cd sweetty-instance-template && \
    set -a; . ./sweetty.instance.env; set +a; \
    systemctl is-active "sweetty-$(cat /opt/sweetty/.active-slot)".service nftables haproxy; \
-   for p in $(provision/render-surface.sh ports); do ss -tln | grep -q ":$p " && echo "$p ok" || echo "$p MISSING"; done'
+   for p in $(provision/render-surface.sh backend-ports); do ss -tln | grep -q ":$p " && echo "$p ok" || echo "$p MISSING"; done'
 ```
 
-Expect the honeypot slot active, `nftables` active, and the honeypot ports bound.
+Expect the honeypot slot active, `nftables` active, and every honeypot backend
+serving. The loop checks the loopback backends SweeTTY actually listens on, not
+the public edge ports (HAProxy binds those even when the backend behind them is
+dead), so a service the pinned release cannot run shows up here as `MISSING`.
 If a reboot does not come back cleanly, that is a provisioning defect, not a
 one-off (the egress firewall must allow the link-local range so cloud-init can
 reach the instance metadata service on boot).

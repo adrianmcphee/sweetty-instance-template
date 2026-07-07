@@ -182,6 +182,19 @@ ports_csv() {
 	printf '\n'
 }
 
+# The loopback backend ports SweeTTY actually listens on. Under haproxy these are
+# the 1XXXX backends the edge forwards to; under direct they equal the public
+# ports. Verify probes these to prove SweeTTY is serving, not just that the edge
+# port is bound.
+backend_ports_inline() {
+	local sep="" public protocol persona backend rate cur
+	while IFS=$'\t' read -r public protocol persona backend rate cur; do
+		printf '%s%s' "${sep}" "${backend}"
+		sep=" "
+	done < <(rows)
+	printf '\n'
+}
+
 emit_config() {
 	local proxy_line console_block comment_line
 	proxy_line=""
@@ -297,6 +310,9 @@ case "${cmd}" in
 	ports-csv)
 		ports_csv
 		;;
+	backend-ports)
+		backend_ports_inline
+		;;
 	config)
 		emit_config
 		;;
@@ -304,7 +320,7 @@ case "${cmd}" in
 		emit_haproxy
 		;;
 	*)
-		echo "usage: $0 {profile|pick-profile|validate-profile|rows|ports|ports-csv|config|haproxy}" >&2
+		echo "usage: $0 {profile|pick-profile|validate-profile|rows|ports|ports-csv|backend-ports|config|haproxy}" >&2
 		exit 2
 		;;
 esac

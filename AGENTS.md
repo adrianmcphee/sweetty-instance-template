@@ -99,12 +99,15 @@ ssh -p "$PORT" deploy@HOST \
   'cd sweetty-instance-template && \
    set -a; . ./sweetty.instance.env; set +a; \
    systemctl is-active "sweetty-$(cat /opt/sweetty/.active-slot)".service nftables haproxy; \
-   for p in $(provision/render-surface.sh ports); do ss -tln | grep -q ":$p " && echo "$p ok" || echo "$p MISSING"; done; \
+   for p in $(provision/render-surface.sh backend-ports); do ss -tln | grep -q ":$p " && echo "$p ok" || echo "$p MISSING"; done; \
    curl -s -o /dev/null -w "http %{http_code}\n" http://127.0.0.1:80/'
 ```
-Expect the slot, `nftables`, and `haproxy` all active; every honeypot port bound
-(through HAProxy); and `http 200`. A reboot that does not come back clean is a
-provisioning defect, not a one-off.
+Expect the slot, `nftables`, and `haproxy` all active; every SweeTTY backend
+serving; and `http 200`. The loop checks the loopback backends SweeTTY listens
+on, not the public edge ports (HAProxy binds those even when the backend is
+dead), so a service the pinned release cannot run shows up as `MISSING` instead
+of passing as a bound-but-silent port. A reboot that does not come back clean is
+a provisioning defect, not a one-off.
 
 ### 7. Hand off
 Give the operator the block from `/root/sweetty-access.txt`: the admin port, the

@@ -68,6 +68,7 @@ runuser -u "${DEPLOY_USER}" -- env INSTANCE_ENV="${DEPLOY_CHECKOUT}/sweetty.inst
 echo "### bootstrap: verify ###"
 active="$(cat "${INSTALL_DIR}/.active-slot" 2>/dev/null || echo blue)"
 verify_ports="$(SWEETTY_PROFILE="${SWEETTY_PROFILE:-web}" TOPOLOGY="${TOPOLOGY:-haproxy}" "${REPO_ROOT}/provision/render-surface.sh" ports)"
+verify_backends="$(SWEETTY_PROFILE="${SWEETTY_PROFILE:-web}" TOPOLOGY="${TOPOLOGY:-haproxy}" "${REPO_ROOT}/provision/render-surface.sh" backend-ports)"
 rc=0
 if systemctl is-active "sweetty-${active}.service" >/dev/null 2>&1; then
 	echo "  slot ${active}: active"
@@ -84,12 +85,28 @@ else
 fi
 for p in ${verify_ports}; do
 	if ss -tln 2>/dev/null | grep -q ":${p} "; then
-		echo "  port ${p}: bound"
+		echo "  edge port ${p}: bound"
 	else
-		echo "  port ${p}: NOT bound" >&2
+		echo "  edge port ${p}: NOT bound" >&2
 		rc=1
 	fi
 done
+# A bound edge port only proves HAProxy is listening; if the SweeTTY backend
+# behind it is dead, the port accepts connections, serves nothing, and logs
+# nothing. Under haproxy, verify each loopback backend is actually serving so a
+# profile that names a service the pinned release cannot run fails here instead
+# of standing up a silent, world-open port. Under direct the backend is the
+# public port, already checked above.
+if [[ "${TOPOLOGY:-haproxy}" == "haproxy" ]]; then
+	for p in ${verify_backends}; do
+		if ss -tln 2>/dev/null | grep -q ":${p} "; then
+			echo "  backend ${p}: serving"
+		else
+			echo "  backend ${p}: NOT serving (edge port open but honeypot dead)" >&2
+			rc=1
+		fi
+	done
+fi
 if [[ "${rc}" -ne 0 ]]; then
 	echo "### bootstrap: VERIFY FAILED (honeypot not fully serving) ###" >&2
 	exit 1
