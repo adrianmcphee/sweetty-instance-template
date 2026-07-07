@@ -80,7 +80,7 @@ walkthrough is below.
   nothing extra. Whatever it is named (`id_ed25519.pub`, `id_rsa.pub`,
   `id_ecdsa.pub`, ...), `ls ~/.ssh/*.pub` shows your public keys; pick the one
   whose private key you actually use. If you use a separate, dedicated key instead,
-  dedicated key instead, every login and tunnel command below needs
+  every login and tunnel command below needs
   `-i <that private key>` (or an ssh-config `IdentityFile`), because the box
   authorizes only the one public key you install and password auth is off, so your
   other keys are refused. You keep the private key; only the public key goes on the
