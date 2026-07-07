@@ -208,6 +208,9 @@ tracked.
   box.
 - A profile-aware service surface renderer. One `SWEETTY_PROFILE` value drives
   SweeTTY listeners, HAProxy frontends/backends, nftables ports, and verification.
+  Each rendered listener also records its public port, so the management console
+  shows the real port an attacker reaches rather than the loopback backend behind
+  the edge.
 - An nftables firewall that opens the attack surface to the world, restricts
   management to one operator address, and denies the honeypot any egress.
 - Intrusion-detection tripwires (auditd, optional osquery) tuned to alarm only on
@@ -328,6 +331,17 @@ accepts connections, serves nothing, and logs nothing. Pin a release that
 implements every service your profile lists. The reboot-verify probes the loopback
 backends, so a mismatch surfaces as a `MISSING` backend instead of a silent
 open port.
+
+Changing the exposed surface after provisioning is deliberately not a
+`make deploy` operation. `config.json` is rendered once, at provision time, and
+owned by root; a deploy only swaps the binary and leaves the config untouched. To
+change `SWEETTY_PROFILE` (or to pick up a service a newer `RELEASE_TAG` adds) on a
+running box, remove `/opt/sweetty/config.json` and re-run provisioning as root
+(provisioning will not overwrite a config that already exists). On a hardened box
+root login is off, so in practice that means the provider serial console or a
+rebuild. A consequence: a box provisioned before the config carried public ports
+keeps showing the loopback backend ports in the console until it is re-provisioned;
+a freshly provisioned box shows the real public ports.
 
 Real SSH is on a randomized, http-like `ADMIN_SSH_PORT` (8088 and friends, picked
 per instance so it blends in as a web service with no fixed admin-port tell) and
