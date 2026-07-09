@@ -212,6 +212,7 @@ emit_config() {
 		[[ -n "${comment_line}" ]] && printf '%s\n' "${comment_line}"
 		printf '  "portal_port": %s,\n' "${portal_port}"
 		printf '  "log_file": "/opt/sweetty/sweetty.log",\n'
+		printf '  "record": true,\n'
 		printf '  "record_dir": "/opt/sweetty/recordings",\n'
 		printf '  "persona_file": "/opt/sweetty/state/persona.json",\n'
 		printf '  "geoip_file": "/opt/sweetty/geo/country-ipv4.csv",\n'

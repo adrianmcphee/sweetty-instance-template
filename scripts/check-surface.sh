@@ -68,6 +68,8 @@ with open(path, encoding="utf-8") as f:
     cfg = json.load(f)
 listeners = cfg.get("listeners", [])
 got = [int(x["port"]) for x in listeners]
+if cfg.get("record") is not True or cfg.get("record_dir") != "/opt/sweetty/recordings":
+    raise SystemExit(f"{label}: session recording must be explicitly enabled with the quota-bound recordings directory")
 if got != expected:
     raise SystemExit(f"{label}: listener ports {got} != expected {expected}")
 if len(got) != len(set(got)):

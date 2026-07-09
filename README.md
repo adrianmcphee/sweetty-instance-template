@@ -96,7 +96,7 @@ create the VM and never SSH in to set it up.
 1. Copy `sweetty.instance.env.example` to `sweetty.instance.env` and fill in
    `OPERATOR_IP` and `RELEASE_TAG` (a published
    [sweetty release](https://github.com/adrianmcphee/sweetty/releases), e.g.
-   `v0.3.22`). Leave `SWEETTY_PROFILE="random"` for a per-instance service
+   `v0.3.24`). Leave `SWEETTY_PROFILE="random"` for a per-instance service
    surface, leave `TOPOLOGY="haproxy"`, and leave `ADMIN_SSH_PORT` **empty** so
    real SSH lands on a per-instance random port (no fleet-wide tell). The chosen
    profile, chosen port, and exact login + tunnel commands are written back during
@@ -395,7 +395,7 @@ on the host as the `deploy` user (it uses the narrow sudo grants provisioning se
 up), or from CI holding the deploy key.
 
 ```bash
-deploy/deploy.sh v0.3.22
+deploy/deploy.sh v0.3.24
 ```
 
 This pulls `sweetty_<ver>_linux_<arch>.tar.gz` and `checksums.txt` from the
