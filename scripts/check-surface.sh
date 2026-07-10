@@ -68,8 +68,12 @@ with open(path, encoding="utf-8") as f:
     cfg = json.load(f)
 listeners = cfg.get("listeners", [])
 got = [int(x["port"]) for x in listeners]
-if cfg.get("record") is not True or cfg.get("record_dir") != "/opt/sweetty/recordings":
-    raise SystemExit(f"{label}: session recording must be explicitly enabled with the quota-bound recordings directory")
+# Recording is on by default since sweetty v0.3.25 (quota-bound). An absent
+# record_dir resolves to "recordings" under the unit's WorkingDirectory, which
+# is /opt/sweetty/recordings — the provisioned, retention-managed directory.
+# Fail only when a config disables recording or points it somewhere unmanaged.
+if cfg.get("record") is False or cfg.get("record_dir") not in (None, "/opt/sweetty/recordings"):
+    raise SystemExit(f"{label}: session recording must be on and use the quota-bound recordings directory")
 if got != expected:
     raise SystemExit(f"{label}: listener ports {got} != expected {expected}")
 if len(got) != len(set(got)):
